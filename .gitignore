@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pkl
+*.egg-info/
+.venv/
+venv/
+.env
+# Jupyter
+.ipynb_checkpoints/
+# macOS
+.DS_Store
+# VSCode
+.vscode/
+# Conda
+*.conda
+*.env
+*.log
+# PID files
+.*.pid
+#
+_archive/
+fund_collector/
+

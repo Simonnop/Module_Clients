@@ -1,0 +1,14 @@
+# tester 模块依赖包
+
+# WebSocket 客户端库
+websocket-client>=1.6.0
+
+# HTTP 请求库（用于模块注册）
+requests>=2.31.0
+
+# 数值计算库
+numpy>=1.24.0
+
+# 环境变量管理
+python-dotenv>=1.0.0
+
