@@ -2,8 +2,8 @@
 """
 单次运行 main 模块的脚本
 用法:
-    python run_main.py --codes 159001 159002 159003
-    python run_main.py --codes 159001 --status  # 显示License状态
+    python run_main.py --codes 000001 000002 600000
+    python run_main.py --codes 000001 --status  # 显示License状态
 """
 import sys
 import argparse
@@ -30,19 +30,19 @@ def main():
     主函数 - 解析命令行参数并执行
     """
     parser = argparse.ArgumentParser(
-        description='单次运行基金数据获取模块',
+        description='单次运行股票实时交易数据获取模块',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python run_main.py --codes 159001 159002 159003
-  python run_main.py --codes 159001 --status
+  python run_main.py --codes 000001 000002 600000
+  python run_main.py --codes 000001 --status
   python run_main.py --init  # 初始化License统计
         """
     )
     parser.add_argument(
         '--codes', '-c',
         nargs='+',
-        help='基金代码列表，例如: --codes 159001 159002'
+        help='股票代码列表，例如: --codes 000001 000002'
     )
     parser.add_argument(
         '--status', '-s',
@@ -74,11 +74,11 @@ def main():
             show_license_usage()
             return
         
-        # 如果没有提供基金代码，显示帮助信息
+        # 如果没有提供股票代码，显示帮助信息
         if not args.codes:
             parser.print_help()
             print("\n提示: 使用 --status 查看License使用状态")
-            print("示例: python run_main.py --codes 159001 159002")
+            print("示例: python run_main.py --codes 000001 000002")
             return
         
         # 初始化License统计（如果尚未初始化）
@@ -88,7 +88,7 @@ def main():
             print(f"警告: 初始化License使用统计时出现警告: {e}")
         
         # 显示初始License状态
-        print("\n开始获取基金数据前，License使用状态:")
+        print("\n开始获取股票实时交易数据前，License使用状态:")
         show_license_usage()
         
         # 准备参数
@@ -103,7 +103,7 @@ def main():
         }
         
         # 执行数据获取
-        print(f"\n开始获取 {len(args.codes)} 个基金的数据: {', '.join(args.codes)}\n")
+        print(f"\n开始获取 {len(args.codes)} 个股票的实时交易数据: {', '.join(args.codes)}\n")
         result = run(data, run_args)
         
         # 显示结果
@@ -115,8 +115,8 @@ def main():
         print(f"成功: {result.get('success_count', 0)}")
         print(f"失败: {result.get('failed_count', 0)}")
         
-        if result.get('failed_funds'):
-            print(f"失败的基金代码: {', '.join(result['failed_funds'])}")
+        if result.get('failed_stocks'):
+            print(f"失败的股票代码: {', '.join(result['failed_stocks'])}")
         
         if result.get('message'):
             print(f"消息: {result['message']}")
