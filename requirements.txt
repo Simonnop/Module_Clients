@@ -12,3 +12,6 @@ numpy>=1.24.0
 # 环境变量管理
 python-dotenv>=1.0.0
 
+# MongoDB 数据库驱动
+pymongo>=4.6.0
+
