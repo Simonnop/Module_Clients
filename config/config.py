@@ -32,8 +32,8 @@ SERVER_PORT = int(SERVER_PORT)
 CONFIG = {
 
     # 模块信息
-    "name": "测试模块",
-    "description": "这是一个用于测试的模块",
+    "name": "基金实时数据获取模块",
+    "description": "基金实时数据获取模块,从必盈API获取基金实时数据并保存到MongoDB数据库",
     
     # 输入数据需求
     "input_data": [

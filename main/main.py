@@ -12,15 +12,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-# 加载 .env 文件（从当前目录或上级目录）
-env_path = Path(__file__).parent.parent / '.env'
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    # 尝试从当前目录加载
-    current_env_path = Path(__file__).parent / '.env'
-    if current_env_path.exists():
-        load_dotenv(current_env_path)
+# 加载 .env 文件（按优先级：项目根目录 -> config目录 -> main目录）
+base_dir = Path(__file__).parent.parent
+env_paths = [
+    base_dir / '.env',                    # 项目根目录
+    base_dir / 'config' / '.env',         # config目录
+    Path(__file__).parent / '.env',       # main目录
+]
+
+env_loaded = False
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(env_path)
+        env_loaded = True
+        break
 
 # 导入License管理模块
 from license_manager import (
