@@ -15,21 +15,21 @@ logger = logging.getLogger(__name__)
 LOG_DIR = os.path.join(os.path.dirname(__file__), '../logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# 确保可以导入 execute 模块
-execute_dir = os.path.join(os.path.dirname(__file__), '../execute')
-if execute_dir not in sys.path:
-    sys.path.insert(0, execute_dir)
+# 确保可以导入 main 模块
+main_dir = os.path.join(os.path.dirname(__file__), '../main')
+if main_dir not in sys.path:
+    sys.path.insert(0, main_dir)
 
-# 导入 execute.main 模块
+# 导入 main.main 模块
 try:
     import importlib.util
-    main_path = os.path.join(execute_dir, 'main.py')
-    spec = importlib.util.spec_from_file_location("execute_main", main_path)
-    execute_main = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(execute_main)
-    run = execute_main.run
+    main_path = os.path.join(main_dir, 'main.py')
+    spec = importlib.util.spec_from_file_location("main_main", main_path)
+    main_main = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_main)
+    run = main_main.run
 except Exception as e:
-    logger.error(f"无法导入 execute.main 模块: {e}")
+    logger.error(f"无法导入 main.main 模块: {e}")
     raise
 
 

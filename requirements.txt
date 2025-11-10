@@ -1,4 +1,4 @@
-# tester 模块依赖包
+# template 模块依赖包
 
 # WebSocket 客户端库
 websocket-client>=1.6.0

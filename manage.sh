@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# tester 模块管理脚本
+# 模块管理脚本
 
 # 获取脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-MODULE_NAME="tester"
+MODULE_NAME="client"
 PID_FILE="$SCRIPT_DIR/.${MODULE_NAME}.pid"
 LOG_DIR="$SCRIPT_DIR/logs"
 MAIN_SCRIPT="$SCRIPT_DIR/connect/client_connect.py"
@@ -47,8 +47,8 @@ check_dependencies() {
 
 # 检查模块注册
 check_registration() {
-    if [ ! -f "$SCRIPT_DIR/res/module_hash.txt" ]; then
-        print_error "未找到 res/module_hash.txt 文件"
+    if [ ! -f "$SCRIPT_DIR/config/module_hash.txt" ]; then
+        print_error "未找到 config/module_hash.txt 文件"
         print_info "请先运行: $0 register"
         return 1
     fi

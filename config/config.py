@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# 加载 .env 文件（从当前目录或 res 目录）
+# 加载 .env 文件（从当前目录或上级目录）
 env_path = Path(__file__).parent / '.env'
 if env_path.exists():
     load_dotenv(env_path)

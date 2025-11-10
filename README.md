@@ -1,8 +1,8 @@
-# Tester 模块
+# 客户端模块
 
 ## 简介
 
-这是一个用于测试的模块，通过 WebSocket 连接到服务器，接收并处理执行请求。
+这是一个客户端模块，通过 WebSocket 连接到服务器，接收并处理执行请求。
 
 ## 功能特性
 
@@ -27,15 +27,15 @@ pip install -r requirements.txt
 python connect/register.py
 ```
 
-注册成功后会在 `res/module_hash.txt` 文件中保存模块哈希值。
+注册成功后会在 `config/module_hash.txt` 文件中保存模块哈希值。
 
 ### 2. 配置环境变量
 
 安全性相关的配置（如服务器地址等）需要配置在 `.env` 文件中：
 
 ```bash
-# 复制示例配置文件
-cp res/.env.example res/.env
+# 复制示例配置文件（如果存在）
+cp config/.env.example config/.env
 
 # 编辑 .env 文件，填入实际配置值
 # 注意：.env 文件包含敏感信息，不会被提交到版本控制
@@ -99,14 +99,14 @@ python connect/client_connect.py
 ## 目录结构
 
 ```
-tester/
+template/
 ├── connect/              # 连接相关模块
 │   ├── client_connect.py    # WebSocket 客户端
 │   ├── model_router.py      # 请求路由处理
 │   └── register.py          # 模块注册
-├── execute/             # 业务执行模块
+├── main/                 # 业务执行模块
 │   └── main.py              # 主业务逻辑
-├── res/                 # 资源文件
+├── config/               # 配置文件目录
 │   ├── config.py            # 配置文件
 │   └── module_hash.txt      # 模块哈希值
 ├── logs/                # 日志目录

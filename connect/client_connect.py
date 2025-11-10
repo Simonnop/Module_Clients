@@ -44,7 +44,7 @@ def load_config():
     """
     try:
         import importlib.util
-        config_path = os.path.join(os.path.dirname(__file__), '../res/config.py')
+        config_path = os.path.join(os.path.dirname(__file__), '../config/config.py')
         spec = importlib.util.spec_from_file_location("config", config_path)
         config_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(config_module)
@@ -71,7 +71,7 @@ def read_module_hash():
     """
     try:
         # 使用相对路径读取 hash 文件
-        hash_file_path = os.path.join(os.path.dirname(__file__), '../res/module_hash.txt')
+        hash_file_path = os.path.join(os.path.dirname(__file__), '../config/module_hash.txt')
         with open(hash_file_path, 'r') as f:
             hash_value = f.read().strip()
         return hash_value
@@ -109,6 +109,8 @@ class WebSocketClient:
         self.ws = None
         self.is_connected = False
         self.heartbeat_thread = None
+        self.should_reconnect = True  # 是否应该重连
+        self.reconnecting = False  # 是否正在重连中
     
     def on_message(self, ws, message):
         """
@@ -213,7 +215,9 @@ class WebSocketClient:
             ws: WebSocket连接
             error: 错误信息
         """
-        logger.error(f"发生错误: {error}")
+        logger.error(f"WebSocket连接发生错误: {error}")
+        # 标记连接已断开，触发重连
+        self.is_connected = False
     
     def on_close(self, ws, close_status_code, close_msg):
         """
@@ -224,8 +228,13 @@ class WebSocketClient:
             close_status_code: 关闭状态码
             close_msg: 关闭消息
         """
-        logger.info("WebSocket连接已关闭")
+        logger.info(f"WebSocket连接已关闭 (状态码: {close_status_code}, 消息: {close_msg})")
         self.is_connected = False
+        
+        # 如果应该重连且不在重连中，启动重连
+        if self.should_reconnect and not self.reconnecting:
+            logger.info(f"将在 {HEARTBEAT_INTERVAL} 秒后尝试重新连接...")
+            threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
     
     def on_open(self, ws):
         """
@@ -247,13 +256,56 @@ class WebSocketClient:
         """
         while self.is_connected:
             try:
-                time.sleep(HEARTBEAT_INTERVAL)  # 发送一次心跳
+                time.sleep(HEARTBEAT_INTERVAL)  # 等待心跳间隔
                 if self.ws and self.is_connected:
                     self.ws.send("heartbeat")
-                    logger.info("发送心跳")
+                    logger.debug("发送心跳")
             except Exception as e:
                 logger.error(f"发送心跳失败: {e}")
+                # 心跳发送失败，标记连接断开，触发重连
+                self.is_connected = False
+                if self.should_reconnect and not self.reconnecting:
+                    logger.info(f"心跳发送失败，将在 {HEARTBEAT_INTERVAL} 秒后尝试重新连接...")
+                    threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
                 break
+    
+    def _reconnect_after_delay(self):
+        """
+        延迟后重连
+        """
+        if self.reconnecting:
+            return
+        
+        self.reconnecting = True
+        try:
+            # 等待心跳间隔时间
+            time.sleep(HEARTBEAT_INTERVAL)
+            
+            # 检查是否还需要重连（可能已经连接成功或主动关闭）
+            if not self.should_reconnect:
+                return
+            
+            if not self.is_connected:
+                logger.info("开始尝试重新连接...")
+                # 重置标志，允许 connect() 内部的重连逻辑
+                self.reconnecting = False
+                # 调用 connect()，这是阻塞的
+                self.connect()
+            else:
+                # 已经连接成功，不需要重连
+                logger.info("连接已恢复，取消重连")
+        except Exception as e:
+            logger.error(f"重连过程中发生错误: {e}")
+            self.reconnecting = False
+            # 如果重连失败且应该继续重连，等待心跳间隔后再次尝试
+            if self.should_reconnect:
+                time.sleep(HEARTBEAT_INTERVAL)
+                if not self.is_connected:
+                    threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
+        finally:
+            # 确保标志被重置（如果 connect() 返回了）
+            if self.reconnecting:
+                self.reconnecting = False
     
     def connect(self):
         """
@@ -264,25 +316,40 @@ class WebSocketClient:
         
         logger.info(f"尝试连接到: {self.url}")
         
-        # 创建WebSocket连接
-        self.ws = websocket.WebSocketApp(
-            self.url,
-            on_open=self.on_open,
-            on_message=self.on_message,
-            on_error=self.on_error,
-            on_close=self.on_close
-        )
-        
-        # 运行WebSocket连接（阻塞）
-        self.ws.run_forever()
+        try:
+            # 创建WebSocket连接
+            self.ws = websocket.WebSocketApp(
+                self.url,
+                on_open=self.on_open,
+                on_message=self.on_message,
+                on_error=self.on_error,
+                on_close=self.on_close
+            )
+            
+            # 运行WebSocket连接（阻塞）
+            # 如果连接失败或断开，run_forever 会返回，on_close 回调会处理重连
+            self.ws.run_forever()
+                
+        except Exception as e:
+            logger.error(f"连接过程中发生异常: {e}")
+            self.is_connected = False
+            # 如果连接失败，等待后重试（on_close 可能不会触发，所以这里需要处理）
+            if self.should_reconnect and not self.reconnecting:
+                logger.info(f"连接失败，将在 {HEARTBEAT_INTERVAL} 秒后尝试重新连接...")
+                threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
     
     def close(self):
         """
         关闭WebSocket连接
         """
+        logger.info("正在关闭WebSocket连接...")
+        self.should_reconnect = False  # 停止重连
         self.is_connected = False
         if self.ws:
-            self.ws.close()
+            try:
+                self.ws.close()
+            except Exception as e:
+                logger.error(f"关闭连接时发生错误: {e}")
 
 def main():
     """
@@ -317,9 +384,15 @@ def main():
     client = WebSocketClient(websocket_url, module_hash)
     
     try:
+        # 启动连接（如果断开会自动重连）
         client.connect()
+        # 保持主线程运行，等待重连
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
+        logger.info("收到中断信号，正在关闭连接...")
         client.close()
+        logger.info("程序已退出")
 
 if __name__ == "__main__":
     main()

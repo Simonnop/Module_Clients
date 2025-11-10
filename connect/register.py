@@ -23,7 +23,7 @@ def load_model_config():
     """
     try:
         # 使用绝对路径导入配置文件
-        config_path = os.path.join(current_dir, '../res/config.py')
+        config_path = os.path.join(current_dir, '../config/config.py')
         spec = importlib.util.spec_from_file_location("config", config_path)
         config_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(config_module)
@@ -48,7 +48,7 @@ def test_module_register():
     # 加载配置模块以获取服务器地址和端口
     try:
         import importlib.util
-        config_path = os.path.join(current_dir, '../res/config.py')
+        config_path = os.path.join(current_dir, '../config/config.py')
         spec = importlib.util.spec_from_file_location("config", config_path)
         config_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(config_module)
@@ -67,9 +67,9 @@ def test_module_register():
     endpoint = "/module/register"
     url = f"http://{server_ip}:{server_port}{endpoint}"
 
-    # 为 execute 文件夹计算一个 hash 值, 作为一个参数
-    # 计算 execute 文件夹的 hash 值
-    execute_dir = os.path.join(current_dir, '../execute')
+    # 为 main 文件夹计算一个 hash 值, 作为一个参数
+    # 计算 main 文件夹的 hash 值
+    execute_dir = os.path.join(current_dir, '../main')
     hash_obj = hashlib.md5()
     
     # 遍历文件夹中的所有文件
@@ -107,7 +107,7 @@ def test_module_register():
             logger.info(f"模块 Hash 值: {hash_value}")
             
             # 保存hash值到文件
-            hash_file_path = os.path.join(current_dir, '../res/module_hash.txt')
+            hash_file_path = os.path.join(current_dir, '../config/module_hash.txt')
             with open(hash_file_path, 'w') as f:
                 f.write(hash_value)
             logger.info(f"Hash 值已保存到 {hash_file_path} 文件")

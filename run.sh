@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# tester 模块启动脚本
+# template 模块启动脚本
 
 # 获取脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -20,13 +20,13 @@ if ! python3 -c "import websocket" 2>/dev/null; then
 fi
 
 # 检查 module_hash.txt 是否存在
-if [ ! -f "res/module_hash.txt" ]; then
-    echo "错误: 未找到 res/module_hash.txt 文件"
+if [ ! -f "config/module_hash.txt" ]; then
+    echo "错误: 未找到 config/module_hash.txt 文件"
     echo "请先运行 connect/register.py 进行模块注册"
     exit 1
 fi
 
 # 启动客户端连接
-echo "正在启动 tester 模块..."
+echo "正在启动模块..."
 python3 connect/client_connect.py
 
