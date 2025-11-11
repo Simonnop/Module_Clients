@@ -7,7 +7,7 @@ import logging
 import json
 import time
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -29,13 +29,7 @@ for env_path in env_paths:
 
 # 导入License管理模块
 from license_manager import (
-    get_available_license,
-    rollback_license_usage,
-    get_license_usage_count,
-    initialize_license_usage,
-    show_license_usage,
-    get_licenses,
-    get_daily_limit
+    get_licenses
 )
 
 # 配置日志
@@ -139,7 +133,38 @@ def save_stock_data_to_mongodb(stock_data: Dict):
         return False
 
 
-def fetch_stock_data(stock_code: str, license_key: str) -> Optional[Dict]:
+def save_stock_data_batch_to_mongodb(stock_data_list: List[Dict]) -> tuple:
+    """
+    批量保存股票数据到MongoDB
+    
+    Args:
+        stock_data_list: 股票数据字典列表
+        
+    Returns:
+        (成功数量, 失败数量) 元组
+    """
+    if not stock_data_list:
+        return (0, 0)
+    
+    try:
+        collection = get_mongo_collection()
+        
+        # 添加时间戳
+        now = datetime.now()
+        for stock_data in stock_data_list:
+            stock_data['create_time'] = now
+        
+        # 批量插入数据
+        result = collection.insert_many(stock_data_list)
+        logger.info(f"成功批量保存 {len(result.inserted_ids)} 条股票数据到MongoDB")
+        return (len(result.inserted_ids), 0)
+        
+    except Exception as e:
+        logger.error(f"批量保存股票数据到MongoDB失败: {e}")
+        return (0, len(stock_data_list))
+
+
+def fetch_stock_data(stock_code: str, license_key: str) -> Tuple[Optional[Dict], Optional[int]]:
     """
     获取单个股票的实时交易数据
     
@@ -148,13 +173,14 @@ def fetch_stock_data(stock_code: str, license_key: str) -> Optional[Dict]:
         license_key: License密钥
         
     Returns:
-        股票数据字典，如果获取失败则返回None
+        (股票数据字典, HTTP状态码) 元组
+        如果获取成功，返回 (stock_data, 200)
+        如果获取失败，返回 (None, status_code)
     """
     url = f"{BIYING_API_BASE_URL}/{stock_code}/{license_key}"
-    today = datetime.now().date().isoformat()
     
     try:
-        logger.info(f"正在获取股票 {stock_code} 的实时交易数据...")
+        logger.info(f"正在获取股票 {stock_code} 的实时交易数据，使用License: {license_key[:20]}...")
         response = requests.get(url, timeout=10)
         
         if response.status_code == 200:
@@ -166,36 +192,27 @@ def fetch_stock_data(stock_code: str, license_key: str) -> Optional[Dict]:
                 stock_data = data
             else:
                 logger.error(f"股票 {stock_code} API返回数据格式异常: {data}")
-                rollback_license_usage(license_key, today)
-                return None
+                return (None, response.status_code)
             
-            # License使用计数已在 get_available_license() 中通过事务更新
-            # 这里只需要记录日志
-            usage_count = get_license_usage_count(license_key, today)
-            daily_limit = get_daily_limit(license_key)
-            logger.info(f"成功获取股票 {stock_code} 的实时交易数据，License {license_key} 今日已使用 {usage_count}/{daily_limit} 次")
-            return stock_data
+            logger.info(f"成功获取股票 {stock_code} 的实时交易数据")
+            return (stock_data, 200)
         else:
-            # API调用失败，回滚License使用计数
+            # API调用失败
             logger.error(f"获取股票 {stock_code} 数据失败，HTTP状态码: {response.status_code}, 响应: {response.text}")
-            rollback_license_usage(license_key, today)
-            return None
+            return (None, response.status_code)
             
     except requests.exceptions.RequestException as e:
-        # 请求异常，回滚License使用计数
+        # 请求异常
         logger.error(f"请求股票 {stock_code} 数据时发生异常: {e}")
-        rollback_license_usage(license_key, today)
-        return None
+        return (None, None)
     except json.JSONDecodeError as e:
-        # JSON解析错误，回滚License使用计数
+        # JSON解析错误
         logger.error(f"解析股票 {stock_code} 响应JSON时发生错误: {e}")
-        rollback_license_usage(license_key, today)
-        return None
+        return (None, None)
     except Exception as e:
-        # 其他异常，回滚License使用计数
+        # 其他异常
         logger.error(f"获取股票 {stock_code} 数据时发生未预期的错误: {e}")
-        rollback_license_usage(license_key, today)
-        return None
+        return (None, None)
 
 
 def run(data, args=None):
@@ -213,12 +230,6 @@ def run(data, args=None):
     logger.info("收到股票实时交易数据获取请求")
     logger.info(f"接收到的 data 参数: {json.dumps(data, ensure_ascii=False, indent=2)}")
     logger.info(f"接收到的 args 参数: {json.dumps(args if args else {}, ensure_ascii=False, indent=2)}")
-    
-    # 初始化License使用统计
-    try:
-        initialize_license_usage()
-    except Exception as e:
-        logger.warning(f"初始化License使用统计时出现警告: {e}")
     
     # 如果没有传入 args，使用空字典
     if args is None:
@@ -243,51 +254,84 @@ def run(data, args=None):
     
     logger.info(f"需要获取 {len(code_list)} 个股票的实时交易数据: {code_list}")
     
-    # 存储获取结果
-    results = []
+    # 获取License列表（不管使用次数）
+    licenses = get_licenses()
+    if not licenses:
+        logger.error("未找到任何License配置")
+        return {
+            'status': 'error',
+            'message': '未找到任何License配置'
+        }
+    
+    logger.info(f"获取到 {len(licenses)} 个License，将按顺序轮流使用")
+    
+    # License轮换索引
+    license_index = 0
+    
+    # 存储获取到的数据（先不插入数据库）
+    stock_data_list = []
     failed_stocks = []
     
     # 遍历股票代码列表，获取每个股票的实时交易数据
     for stock_code in code_list:
-        # 获取可用License
-        license_key = get_available_license()
+        # 按顺序轮流使用License
+        license_key = licenses[license_index]
+        license_index = (license_index + 1) % len(licenses)
         
-        if not license_key:
-            logger.error(f"无法获取可用License，停止处理。已处理 {len(results)} 个股票")
-            failed_stocks.extend(code_list[len(results):])
-            break
+        # 获取股票实时交易数据，如果遇到429则切换License重试
+        stock_data = None
+        max_retries = len(licenses)  # 最多尝试所有License
+        retry_count = 0
         
-        # 获取股票实时交易数据
-        stock_data = fetch_stock_data(str(stock_code), license_key)
+        while retry_count < max_retries:
+            stock_data, status_code = fetch_stock_data(str(stock_code), license_key)
+            
+            if stock_data:
+                # 获取成功
+                break
+            elif status_code == 429:
+                # 429 Too Many Requests，切换到下一个License重试
+                logger.warning(f"股票 {stock_code} 使用License {license_key[:20]}... 返回429，切换到下一个License")
+                license_key = licenses[license_index]
+                license_index = (license_index + 1) % len(licenses)
+                retry_count += 1
+                # 429时稍微延迟再重试
+                time.sleep(0.5)
+            else:
+                # 其他错误，不再重试
+                break
         
         if stock_data:
             # 添加股票代码到数据中
             stock_data['stock_code'] = stock_code
-            
-            # 保存到MongoDB
-            if save_stock_data_to_mongodb(stock_data):
-                results.append(stock_code)
-            else:
-                failed_stocks.append(stock_code)
-                logger.warning(f"股票 {stock_code} 数据获取成功但保存到MongoDB失败")
+            stock_data_list.append(stock_data)
         else:
             failed_stocks.append(stock_code)
+
+    
+    # 统一批量插入数据库
+    if stock_data_list:
+        logger.info(f"开始批量插入 {len(stock_data_list)} 条股票数据到数据库...")
+        success_count, fail_count = save_stock_data_batch_to_mongodb(stock_data_list)
         
-        # 添加短暂延迟，避免请求过快（注意：请求频率限制为1分钟300次，即每0.2秒一次）
-        time.sleep(0.2)
+        if fail_count > 0:
+            logger.warning(f"批量插入时有 {fail_count} 条数据插入失败")
+    else:
+        success_count = 0
+        logger.warning("没有成功获取到任何股票数据")
     
     # 构建返回结果（只返回执行状态，不返回数据）
     response = {
         'status': 'success',
         'total': len(code_list),
-        'success_count': len(results),
+        'success_count': success_count,
         'failed_count': len(failed_stocks)
     }
     
     if failed_stocks:
         response['failed_stocks'] = failed_stocks
     
-    logger.info(f"数据获取完成: 成功 {len(results)}/{len(code_list)}, 失败 {len(failed_stocks)}")
+    logger.info(f"数据获取完成: 成功 {success_count}/{len(code_list)}, 失败 {len(failed_stocks)}")
     logger.info("=" * 60)
     
     return response
