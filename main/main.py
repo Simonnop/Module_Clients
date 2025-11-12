@@ -278,7 +278,7 @@ def run(data, args=None):
         license_key = licenses[license_index]
         license_index = (license_index + 1) % len(licenses)
         
-        # 获取股票实时交易数据，如果遇到429则切换License重试
+        # 获取股票实时交易数据，如果遇到429或500则切换License重试
         stock_data = None
         max_retries = len(licenses)  # 最多尝试所有License
         retry_count = 0
@@ -289,13 +289,14 @@ def run(data, args=None):
             if stock_data:
                 # 获取成功
                 break
-            elif status_code == 429:
-                # 429 Too Many Requests，切换到下一个License重试
-                logger.warning(f"股票 {stock_code} 使用License {license_key[:20]}... 返回429，切换到下一个License")
+            elif status_code in [429, 500]:
+                # 429 Too Many Requests 或 500 Internal Server Error，切换到下一个License重试
+                error_msg = "状态码" + str(status_code)
+                logger.warning(f"股票 {stock_code} 使用License {license_key[:20]}... 返回{error_msg}，切换到下一个License")
                 license_key = licenses[license_index]
                 license_index = (license_index + 1) % len(licenses)
                 retry_count += 1
-                # 429时稍微延迟再重试
+                # 429或500时稍微延迟再重试
                 time.sleep(0.5)
             else:
                 # 其他错误，不再重试
