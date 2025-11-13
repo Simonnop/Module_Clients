@@ -171,18 +171,25 @@ class WebSocketClient:
             elif message_type == 'execute':
                 logger.info("收到执行命令")
                 logger.debug(f"消息内容: {json.dumps(message_data, ensure_ascii=False, indent=2)}")
+                meta = message_data.get('meta')
                 
                 # 调用 process_request 处理执行请求
                 try:
                     result = process_request(message)
+                    response = {
+                        'status': 'success',
+                        'meta': meta,
+                        'result': result
+                    }
                     # 发送处理结果
-                    self.ws.send(json.dumps(result))
+                    self.ws.send(json.dumps(response))
                     logger.info("执行完成，结果已发送")
                 except Exception as e:
                     logger.exception(f"处理执行请求时发生异常: {e}")
                     # 发送错误响应
                     error_response = {
                         'status': 'error',
+                        'meta': meta,
                         'message': f'处理请求时发生异常: {str(e)}'
                     }
                     try:
