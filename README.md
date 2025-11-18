@@ -2,15 +2,14 @@
 
 ## 简介
 
-这是一个股票实时交易数据获取客户端模块，通过 WebSocket 连接到服务器，接收执行请求后从必盈API获取股票实时交易数据并保存到 MongoDB 数据库。
+这是一个股票实时交易数据获取客户端模块，通过 WebSocket 连接到服务器，接收执行请求后从 Infoway API 批量获取股票实时交易数据并保存到 MongoDB 数据库。
 
 ## 功能特性
 
 - **WebSocket 客户端连接**：与服务器建立 WebSocket 连接，接收执行命令
-- **股票实时数据采集**：从必盈API获取指定股票的实时交易数据（日线最新数据）
+- **股票实时数据采集**：从 Infoway API 批量获取指定股票的实时交易数据
 - **数据存储**：将股票实时交易数据保存到 MongoDB 数据库
-- **批量处理**：支持批量处理多个股票代码
-- **License管理**：自动管理License使用，支持多License轮询和配额管理
+- **批量处理**：支持批量处理多个股票代码，一次请求获取多个股票数据
 - **心跳机制**：保持 WebSocket 连接活跃
 - **直接运行模式**：支持不通过服务器直接运行，方便本地测试
 
@@ -65,7 +64,8 @@ cp config/.env.example config/.env
 - `MONGODB_HOST` - MongoDB 连接字符串（完整连接字符串，如 `mongodb+srv://...` 或 `mongodb://...`）
 - `MONGODB_DB_NAME` - MongoDB 数据库名称（可选，默认 `forecast_platform`）
 - `MONGODB_COLLECTION_NAME` - MongoDB 集合名称（可选，默认 `stock_data`）
-- `BIYING_API_BASE_URL` - 必盈API基础URL（可选，默认 `https://api.biyingapi.com/hsstock/real/time`）
+- `INFOWAY_API_BASE_URL` - Infoway API基础URL（可选，默认 `https://data.infoway.io`）
+- `INFOWAY_API_KEY` - Infoway API密钥（必需）
 - `HEARTBEAT_INTERVAL` - 心跳间隔秒数（可选，默认 10 秒）
 
 ### 3. 启动模块
@@ -110,14 +110,8 @@ python connect/client_connect.py
 不通过服务器，直接运行主函数进行测试：
 
 ```bash
-# 指定股票代码列表
-python run_main.py --codes 000001 000002 600000
-
-# 查看License使用状态
-python run_main.py --status
-
-# 初始化License统计
-python run_main.py --init
+# 指定股票代码列表（支持批量获取）
+python run_main.py --codes TSLA.US AAPL.US USDCNY
 ```
 
 ### 4. 管理脚本命令
@@ -163,48 +157,56 @@ Module_Clients/
 ### 数据采集流程
 
 1. **接收请求**：通过 WebSocket 接收服务器发送的执行请求，包含股票代码列表参数
-2. **License管理**：自动获取可用License，支持多License轮询和配额管理
-3. **API 调用**：调用必盈API获取指定股票的实时交易数据
-4. **数据存储**：将股票实时交易数据保存到 MongoDB
+2. **API 调用**：调用 Infoway API 批量获取指定股票的实时交易数据
+3. **数据存储**：将股票实时交易数据保存到 MongoDB
 
 ### API接口说明
 
-**接口地址**：`https://api.biyingapi.com/hsstock/real/time/{股票代码}/{License密钥}`
+**接口地址**：`https://data.infoway.io/stock/batch_trade/{codes}`
 
-**请求频率限制**：
-- 普通版：1分钟300次
-- 包年版：1分钟3000次
-- 白金版：1分钟6000次
+**请求方式**：GET
 
-**返回格式**：标准JSON格式 `[{},...{}]`
+**请求头**：
+- `apiKey` - Infoway API密钥（必需）
+
+**请求参数**：
+- `codes` - 股票代码列表，多个代码用逗号分隔（如：`TSLA.US,AAPL.US`）
+
+**返回格式**：
+```json
+{
+  "ret": 200,
+  "msg": "success",
+  "traceId": "...",
+  "data": [
+    {
+      "s": "TSLA.US",
+      "t": 1750177346523,
+      "p": "5188.211",
+      "v": "3.0",
+      "vw": "15564.6330",
+      "td": 0
+    }
+  ]
+}
+```
 
 ### 数据字段
 
 保存到 MongoDB 的股票实时交易数据包含以下字段：
-- `p` - 最新价
-- `o` - 开盘价
-- `h` - 最高价
-- `l` - 最低价
-- `yc` - 前收盘价
-- `cje` - 成交总额
-- `v` - 成交总量
-- `pv` - 原始成交总量
-- `t` - 更新时间
-- `ud` - 涨跌额
-- `pc` - 涨跌幅
-- `zf` - 振幅
-- `pe` - 市盈率
-- `tr` - 换手率
-- `pb_ratio` - 市净率
-- `tv` - 成交量
+- `s` - 标的名称（如：TSLA.US）
+- `t` - 交易时间（时间戳）
+- `p` - 价格
+- `v` - 成交量
+- `vw` - 成交额
+- `td` - 交易方向（0为默认值，1为Buy，2为SELL）
 - `stock_code` - 股票代码（自动添加）
 - `create_time` - 数据创建时间（自动添加）
 
 ### 性能优化
 
 - **连接复用**：MongoDB 连接和集合对象全局复用，避免重复创建连接
-- **License管理**：自动管理License使用，支持多License轮询，避免单个License配额耗尽
-- **请求频率控制**：自动控制请求频率，避免超过API限制（默认0.2秒间隔，对应1分钟300次）
+- **批量获取**：支持一次请求获取多个股票数据，提高效率
 
 ## 注意事项
 
@@ -212,7 +214,7 @@ Module_Clients/
 - 首次运行前必须先执行模块注册
 - 模块通过 WebSocket 连接服务器，需要网络畅通
 - 确保 MongoDB 连接字符串配置正确，支持 `mongodb://` 和 `mongodb+srv://` 格式
+- 确保 `INFOWAY_API_KEY` 环境变量已正确配置
 - 日志文件保存在 `logs/` 目录下
-- 股票代码格式：如 `000001`（深市）、`600000`（沪市）等
-- API返回数据格式为数组，代码会自动取第一个元素
-- 请求频率限制为1分钟300次（普通版），代码中已设置0.2秒延迟以确保不超过限制
+- 股票代码格式：如 `TSLA.US`、`AAPL.US`、`USDCNY` 等（支持国际股票代码和货币对）
+- API支持批量获取，多个股票代码用逗号分隔

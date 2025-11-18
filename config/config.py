@@ -33,7 +33,7 @@ CONFIG = {
 
     # 模块信息
     "name": "股票实时数据获取模块",
-    "description": "股票实时数据获取模块,从必盈API获取股票实时数据并保存到MongoDB数据库",
+    "description": "股票实时数据获取模块,从Infoway API批量获取股票实时交易数据并保存到MongoDB数据库",
     
     # 输入数据需求
     "input_data": [

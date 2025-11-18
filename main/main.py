@@ -1,5 +1,5 @@
 """
-股票实时交易数据获取模块 - 必盈API
+股票实时交易数据获取模块 - Infoway API
 """
 import os
 import requests
@@ -27,11 +27,6 @@ for env_path in env_paths:
         env_loaded = True
         break
 
-# 导入License管理模块
-from license_manager import (
-    get_licenses
-)
-
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
@@ -49,12 +44,15 @@ _mongo_client = None
 _mongo_db = None
 _mongo_collection = None
 
-# 必盈API配置（从环境变量读取）
-BIYING_API_BASE_URL = os.getenv('BIYING_API_BASE_URL', 'https://api.biyingapi.com/hsstock/real/time')
+# Infoway API配置（从环境变量读取）
+INFOWAY_API_BASE_URL = os.getenv('INFOWAY_API_BASE_URL', 'https://data.infoway.io')
+INFOWAY_API_KEY = os.getenv('INFOWAY_API_KEY')
 
 # 验证必需配置
 if not MONGODB_HOST:
     raise ValueError("环境变量 MONGODB_HOST 未设置，请在 .env 文件中配置")
+if not INFOWAY_API_KEY:
+    raise ValueError("环境变量 INFOWAY_API_KEY 未设置，请在 .env 文件中配置")
 
 
 def get_mongo_client():
@@ -109,30 +107,6 @@ def get_mongo_collection():
     
     return _mongo_collection
 
-
-def save_stock_data_to_mongodb(stock_data: Dict):
-    """
-    保存股票数据到MongoDB
-    
-    Args:
-        stock_data: 股票数据字典
-    """
-    try:
-        collection = get_mongo_collection()
-        
-        # 添加时间戳
-        stock_data['create_time'] = datetime.now()
-        
-        # 插入数据
-        result = collection.insert_one(stock_data)
-        logger.info(f"成功保存股票 {stock_data.get('stock_code', 'unknown')} 的数据到MongoDB, ID: {result.inserted_id}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"保存股票数据到MongoDB失败: {e}")
-        return False
-
-
 def save_stock_data_batch_to_mongodb(stock_data_list: List[Dict]) -> tuple:
     """
     批量保存股票数据到MongoDB
@@ -164,54 +138,68 @@ def save_stock_data_batch_to_mongodb(stock_data_list: List[Dict]) -> tuple:
         return (0, len(stock_data_list))
 
 
-def fetch_stock_data(stock_code: str, license_key: str) -> Tuple[Optional[Dict], Optional[int]]:
+def fetch_stock_data_batch(codes: List[str]) -> Tuple[Optional[List[Dict]], Optional[int]]:
     """
-    获取单个股票的实时交易数据
+    批量获取股票的实时交易数据
     
     Args:
-        stock_code: 股票代码（如000001）
-        license_key: License密钥
+        codes: 股票代码列表（如 ['TSLA.US', 'AAPL.US']）
         
     Returns:
-        (股票数据字典, HTTP状态码) 元组
-        如果获取成功，返回 (stock_data, 200)
+        (股票数据字典列表, HTTP状态码) 元组
+        如果获取成功，返回 (stock_data_list, 200)
         如果获取失败，返回 (None, status_code)
     """
-    url = f"{BIYING_API_BASE_URL}/{stock_code}/{license_key}"
+    # 将股票代码列表转换为逗号分隔的字符串
+    codes_str = ','.join(codes)
+    url = f"{INFOWAY_API_BASE_URL}/stock/batch_trade/{codes_str}"
+    
+    # 设置请求头
+    headers = {
+        'apiKey': INFOWAY_API_KEY
+    }
     
     try:
-        logger.info(f"正在获取股票 {stock_code} 的实时交易数据，使用License: {license_key[:20]}...")
-        response = requests.get(url, timeout=10)
+        logger.info(f"正在批量获取 {len(codes)} 个股票的实时交易数据: {codes_str}")
+        response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            # API返回格式是数组 [{},...{}]，取第一个元素
-            if isinstance(data, list) and len(data) > 0:
-                stock_data = data[0]
-            elif isinstance(data, dict):
-                stock_data = data
-            else:
-                logger.error(f"股票 {stock_code} API返回数据格式异常: {data}")
+            
+            # 检查返回格式：{ret: 200, msg: "success", traceId: "...", data: [...]}
+            if not isinstance(data, dict):
+                logger.error(f"API返回数据格式异常，期望字典类型: {type(data)}")
                 return (None, response.status_code)
             
-            logger.info(f"成功获取股票 {stock_code} 的实时交易数据")
-            return (stock_data, 200)
+            ret = data.get('ret')
+            if ret != 200:
+                logger.error(f"API返回错误，ret: {ret}, msg: {data.get('msg')}")
+                return (None, response.status_code)
+            
+            # 获取数据列表
+            stock_data_list = data.get('data', [])
+            if not isinstance(stock_data_list, list):
+                logger.error(f"API返回data字段格式异常，期望列表类型: {type(stock_data_list)}")
+                return (None, response.status_code)
+            
+            logger.info(f"成功获取 {len(stock_data_list)} 条股票实时交易数据")
+            return (stock_data_list, 200)
         else:
             # API调用失败
-            logger.error(f"获取股票 {stock_code} 数据失败，HTTP状态码: {response.status_code}, 响应: {response.text}")
+            logger.error(f"批量获取股票数据失败，HTTP状态码: {response.status_code}, 响应: {response.text}")
             return (None, response.status_code)
             
     except requests.exceptions.RequestException as e:
         # 请求异常
-        logger.error(f"请求股票 {stock_code} 数据时发生异常: {e}")
+        logger.error(f"请求股票数据时发生异常: {e}")
         return (None, None)
     except json.JSONDecodeError as e:
         # JSON解析错误
-        logger.error(f"解析股票 {stock_code} 响应JSON时发生错误: {e}")
+        logger.error(f"解析响应JSON时发生错误: {e}")
         return (None, None)
     except Exception as e:
         # 其他异常
-        logger.error(f"获取股票 {stock_code} 数据时发生未预期的错误: {e}")
+        logger.error(f"获取股票数据时发生未预期的错误: {e}")
         return (None, None)
 
 
@@ -254,60 +242,43 @@ def run(data, args=None):
     
     logger.info(f"需要获取 {len(code_list)} 个股票的实时交易数据: {code_list}")
     
-    # 获取License列表（不管使用次数）
-    licenses = get_licenses()
-    if not licenses:
-        logger.error("未找到任何License配置")
-        return {
-            'status': 'error',
-            'message': '未找到任何License配置'
-        }
-    
-    logger.info(f"获取到 {len(licenses)} 个License，将按顺序轮流使用")
-    
-    # License轮换索引
-    license_index = 0
-    
     # 存储获取到的数据（先不插入数据库）
     stock_data_list = []
     failed_stocks = []
     
-    # 遍历股票代码列表，获取每个股票的实时交易数据
-    for stock_code in code_list:
-        # 按顺序轮流使用License
-        license_key = licenses[license_index]
-        license_index = (license_index + 1) % len(licenses)
+    # 批量获取股票数据
+    # 将股票代码列表转换为字符串列表（确保格式正确）
+    codes = [str(code)+".SH" for code in code_list] + [str(code)+".SZ" for code in code_list]
+    
+    # 调用批量API获取数据
+    result_data, status_code = fetch_stock_data_batch(codes)
+    
+    if result_data and status_code == 200:
+        # 创建代码到数据的映射（使用 s 字段作为标的名称）
+        code_to_data = {}
+        for item in result_data:
+            symbol = item.get('s')  # s 字段是标的名称
+            if symbol:
+                code_to_data[symbol] = item
         
-        # 获取股票实时交易数据，如果遇到429或500则切换License重试
-        stock_data = None
-        max_retries = len(licenses)  # 最多尝试所有License
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            stock_data, status_code = fetch_stock_data(str(stock_code), license_key)
-            
-            if stock_data:
-                # 获取成功
-                break
-            elif status_code in [429, 500]:
-                # 429 Too Many Requests 或 500 Internal Server Error，切换到下一个License重试
-                error_msg = "状态码" + str(status_code)
-                logger.warning(f"股票 {stock_code} 使用License {license_key[:20]}... 返回{error_msg}，切换到下一个License")
-                license_key = licenses[license_index]
-                license_index = (license_index + 1) % len(licenses)
-                retry_count += 1
-                # 429或500时稍微延迟再重试
-                time.sleep(0.5)
+        # 将返回的数据与请求的代码列表匹配
+        for code in codes:
+            # 尝试直接匹配
+            if code in code_to_data:
+                stock_data = code_to_data[code].copy()
+                # 添加股票代码字段（使用原始代码）
+                stock_data['stock_code'] = code
+                # 字段映射：保持原有字段名，同时添加中文注释
+                # s: 标的名称, t: 交易时间, p: 价格, v: 成交量, vw: 成交额, td: 交易方向
+                stock_data_list.append(stock_data)
             else:
-                # 其他错误，不再重试
-                break
-        
-        if stock_data:
-            # 添加股票代码到数据中
-            stock_data['stock_code'] = stock_code
-            stock_data_list.append(stock_data)
-        else:
-            failed_stocks.append(stock_code)
+                # 如果找不到匹配的数据，记录为失败
+                failed_stocks.append(code)
+                logger.warning(f"未找到股票代码 {code} 的数据")
+    else:
+        # API调用失败，所有股票都标记为失败
+        failed_stocks = codes
+        logger.error(f"批量获取股票数据失败，状态码: {status_code}")
 
     
     # 统一批量插入数据库

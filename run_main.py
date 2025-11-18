@@ -2,8 +2,8 @@
 """
 单次运行 main 模块的脚本
 用法:
-    python run_main.py --codes 000001 000002 600000
-    python run_main.py --codes 000001 --status  # 显示License状态
+    python run_main.py --codes TSLA.US AAPL.US
+    python run_main.py --codes TSLA.US AAPL.US  # 批量获取股票数据
 """
 import sys
 import argparse
@@ -18,10 +18,9 @@ sys.path.insert(0, str(main_dir))
 # 导入 main 模块
 try:
     from main import run
-    from license_manager import initialize_license_usage, show_license_usage
 except ImportError as e:
     print(f"导入模块失败: {e}")
-    print("请确保 main/main.py 和 main/license_manager.py 存在")
+    print("请确保 main/main.py 存在")
     sys.exit(1)
 
 
@@ -34,62 +33,25 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python run_main.py --codes 000001 000002 600000
-  python run_main.py --codes 000001 --status
-  python run_main.py --init  # 初始化License统计
+  python run_main.py --codes TSLA.US AAPL.US
+  python run_main.py --codes TSLA.US AAPL.US USDCNY
         """
     )
     parser.add_argument(
         '--codes', '-c',
         nargs='+',
-        help='股票代码列表，例如: --codes 000001 000002'
-    )
-    parser.add_argument(
-        '--status', '-s',
-        action='store_true',
-        help='显示License使用状态'
-    )
-    parser.add_argument(
-        '--init', '-i',
-        action='store_true',
-        help='初始化License使用统计'
+        required=True,
+        help='股票代码列表，例如: --codes TSLA.US AAPL.US'
     )
     
     args = parser.parse_args()
     
     try:
-        # 初始化License使用统计
-        if args.init:
-            print("正在初始化License使用统计...")
-            try:
-                initialize_license_usage()
-                print("✓ 初始化完成\n")
-            except Exception as e:
-                print(f"✗ 初始化失败: {e}\n")
-                sys.exit(1)
-        
-        # 显示License状态
-        if args.status:
-            print("\nLicense使用状态:")
-            show_license_usage()
-            return
-        
         # 如果没有提供股票代码，显示帮助信息
         if not args.codes:
             parser.print_help()
-            print("\n提示: 使用 --status 查看License使用状态")
-            print("示例: python run_main.py --codes 000001 000002")
+            print("\n示例: python run_main.py --codes TSLA.US AAPL.US")
             return
-        
-        # 初始化License统计（如果尚未初始化）
-        try:
-            initialize_license_usage()
-        except Exception as e:
-            print(f"警告: 初始化License使用统计时出现警告: {e}")
-        
-        # 显示初始License状态
-        print("\n开始获取股票实时交易数据前，License使用状态:")
-        show_license_usage()
         
         # 准备参数
         data = {
@@ -122,10 +84,6 @@ def main():
             print(f"消息: {result['message']}")
         
         print("=" * 60)
-        
-        # 显示最终License状态
-        print("\n获取数据后，License使用状态:")
-        show_license_usage()
         
         # 根据结果设置退出码
         if result.get('status') == 'error' or result.get('failed_count', 0) > 0:
