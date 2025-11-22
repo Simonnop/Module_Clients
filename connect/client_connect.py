@@ -53,7 +53,7 @@ def load_config():
         logger.error(f"加载配置时发生错误: {e}")
         return None
 
-# 加载配置并获取心跳间隔
+# 加载配置并获取 ping 间隔（用于 WebSocket ping/pong 和重连延迟）
 config_module = load_config()
 if not config_module:
     raise ValueError("无法加载配置文件")
@@ -108,7 +108,6 @@ class WebSocketClient:
         logger.info(f"连接到 WebSocket URL: {self.url}")
         self.ws = None
         self.is_connected = False
-        self.heartbeat_thread = None
         self.should_reconnect = True  # 是否应该重连
         self.reconnecting = False  # 是否正在重连中
     
@@ -123,9 +122,6 @@ class WebSocketClient:
         # 处理简单文本消息
         if message == "receive result":
             logger.info("收到处理结果确认")
-            return
-        elif message == "heartbeat confirm":
-            logger.debug("收到心跳确认")
             return
         
         # 解析 JSON 消息
@@ -252,29 +248,6 @@ class WebSocketClient:
         """
         logger.info("WebSocket连接已建立")
         self.is_connected = True
-        # 启动心跳线程
-        self.heartbeat_thread = threading.Thread(target=self.send_heartbeat)
-        self.heartbeat_thread.daemon = True
-        self.heartbeat_thread.start()
-    
-    def send_heartbeat(self):
-        """
-        发送心跳
-        """
-        while self.is_connected:
-            try:
-                time.sleep(HEARTBEAT_INTERVAL)  # 等待心跳间隔
-                if self.ws and self.is_connected:
-                    self.ws.send("heartbeat")
-                    logger.debug("发送心跳")
-            except Exception as e:
-                logger.error(f"发送心跳失败: {e}")
-                # 心跳发送失败，标记连接断开，触发重连
-                self.is_connected = False
-                if self.should_reconnect and not self.reconnecting:
-                    logger.info(f"心跳发送失败，将在 {HEARTBEAT_INTERVAL} 秒后尝试重新连接...")
-                    threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
-                break
     
     def _reconnect_after_delay(self):
         """
@@ -335,7 +308,11 @@ class WebSocketClient:
             
             # 运行WebSocket连接（阻塞）
             # 如果连接失败或断开，run_forever 会返回，on_close 回调会处理重连
-            self.ws.run_forever()
+            # 使用 WebSocket 自带的 ping/pong 机制
+            self.ws.run_forever(
+                ping_interval=HEARTBEAT_INTERVAL,  # ping 间隔（秒）
+                ping_timeout=max(1, HEARTBEAT_INTERVAL // 2)  # ping 超时时间（秒），必须小于 ping_interval
+            )
                 
         except Exception as e:
             logger.error(f"连接过程中发生异常: {e}")
