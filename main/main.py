@@ -1,5 +1,5 @@
 """
-股票实时交易数据获取模块 - Infoway API
+股票实时数据获取模块 - 雪球 API
 """
 import os
 import requests
@@ -11,6 +11,7 @@ from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
 from pymongo import MongoClient
+import pysnowball as ball
 
 # 加载 .env 文件（按优先级：项目根目录 -> config目录 -> main目录）
 base_dir = Path(__file__).parent.parent
@@ -44,15 +45,12 @@ _mongo_client = None
 _mongo_db = None
 _mongo_collection = None
 
-# Infoway API配置（从环境变量读取）
-INFOWAY_API_BASE_URL = os.getenv('INFOWAY_API_BASE_URL', 'https://data.infoway.io')
-INFOWAY_API_KEY = os.getenv('INFOWAY_API_KEY')
+# 雪球 token（延迟初始化）
+_xueqiu_token = None
 
 # 验证必需配置
 if not MONGODB_HOST:
     raise ValueError("环境变量 MONGODB_HOST 未设置，请在 .env 文件中配置")
-if not INFOWAY_API_KEY:
-    raise ValueError("环境变量 INFOWAY_API_KEY 未设置，请在 .env 文件中配置")
 
 
 def get_mongo_client():
@@ -138,68 +136,94 @@ def save_stock_data_batch_to_mongodb(stock_data_list: List[Dict]) -> tuple:
         return (0, len(stock_data_list))
 
 
+def get_xueqiu_token() -> Optional[str]:
+    """
+    获取雪球 token
+    
+    Returns:
+        token 字符串，如果获取失败则返回 None
+    """
+    global _xueqiu_token
+    
+    if _xueqiu_token is not None:
+        return _xueqiu_token
+    
+    try:
+        logger.info("正在获取雪球 token...")
+        r = requests.get("https://xueqiu.com/hq", headers={"user-agent": "Mozilla"}, timeout=10)
+        if 'xq_a_token' in r.cookies:
+            _xueqiu_token = r.cookies["xq_a_token"]
+            # 设置 pysnowball token
+            ball.set_token(f'xq_a_token={_xueqiu_token}')
+            logger.info("成功获取并设置雪球 token")
+            return _xueqiu_token
+        else:
+            logger.error("未找到 xq_a_token cookie")
+            return None
+    except Exception as e:
+        logger.error(f"获取雪球 token 失败: {e}")
+        return None
+
+
 def fetch_stock_data_batch(codes: List[str]) -> Tuple[Optional[List[Dict]], Optional[int]]:
     """
-    批量获取股票的实时交易数据
+    批量获取股票的实时数据（使用雪球 API）
     
     Args:
-        codes: 股票代码列表（如 ['TSLA.US', 'AAPL.US']）
+        codes: 股票代码列表（如 ['SZ300750', 'SH600519']）
         
     Returns:
         (股票数据字典列表, HTTP状态码) 元组
         如果获取成功，返回 (stock_data_list, 200)
         如果获取失败，返回 (None, status_code)
     """
-    # 将股票代码列表转换为逗号分隔的字符串
-    codes_str = ','.join(codes)
-    url = f"{INFOWAY_API_BASE_URL}/stock/batch_trade/{codes_str}"
-    
-    # 设置请求头
-    headers = {
-        'apiKey': INFOWAY_API_KEY
-    }
+    # 确保 token 已获取
+    token = get_xueqiu_token()
+    if not token:
+        logger.error("无法获取雪球 token")
+        return (None, None)
     
     try:
-        logger.info(f"正在批量获取 {len(codes)} 个股票的实时交易数据: {codes_str}")
-        response = requests.get(url, headers=headers, timeout=10)
+        logger.info(f"正在批量获取 {len(codes)} 个股票的实时数据: {codes}")
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            # 检查返回格式：{ret: 200, msg: "success", traceId: "...", data: [...]}
-            if not isinstance(data, dict):
-                logger.error(f"API返回数据格式异常，期望字典类型: {type(data)}")
-                return (None, response.status_code)
-            
-            ret = data.get('ret')
-            if ret != 200:
-                logger.error(f"API返回错误，ret: {ret}, msg: {data.get('msg')}")
-                return (None, response.status_code)
-            
-            # 获取数据列表
-            stock_data_list = data.get('data', [])
-            if not isinstance(stock_data_list, list):
-                logger.error(f"API返回data字段格式异常，期望列表类型: {type(stock_data_list)}")
-                return (None, response.status_code)
-            
-            logger.info(f"成功获取 {len(stock_data_list)} 条股票实时交易数据")
-            return (stock_data_list, 200)
+        # 将股票代码列表转换为逗号分隔的字符串
+        codes_str = ','.join(codes)
+        
+        # 调用 pysnowball quotec 接口获取实时行情
+        result = ball.quotec(codes_str)
+        
+        if result is None:
+            logger.error("雪球 API 返回 None")
+            return (None, None)
+        
+        # 检查返回格式
+        if isinstance(result, dict):
+            # 如果返回的是字典，检查是否有 data 字段
+            if 'data' in result:
+                stock_data_list = result['data']
+            elif 'list' in result:
+                stock_data_list = result['list']
+            else:
+                # 直接使用字典本身
+                stock_data_list = [result]
+        elif isinstance(result, list):
+            stock_data_list = result
         else:
-            # API调用失败
-            logger.error(f"批量获取股票数据失败，HTTP状态码: {response.status_code}, 响应: {response.text}")
-            return (None, response.status_code)
+            logger.error(f"雪球 API 返回格式异常，期望字典或列表，实际: {type(result)}")
+            return (None, None)
+        
+        if not isinstance(stock_data_list, list):
+            logger.error(f"股票数据格式异常，期望列表类型: {type(stock_data_list)}")
+            return (None, None)
+        
+        logger.info(f"成功获取 {len(stock_data_list)} 条股票实时数据")
+        return (stock_data_list, 200)
             
-    except requests.exceptions.RequestException as e:
-        # 请求异常
-        logger.error(f"请求股票数据时发生异常: {e}")
-        return (None, None)
-    except json.JSONDecodeError as e:
-        # JSON解析错误
-        logger.error(f"解析响应JSON时发生错误: {e}")
-        return (None, None)
     except Exception as e:
         # 其他异常
         logger.error(f"获取股票数据时发生未预期的错误: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return (None, None)
 
 
@@ -215,7 +239,7 @@ def run(data, args=None):
         处理结果字典，包含获取到的股票数据
     """
     logger.info("=" * 60)
-    logger.info("收到股票实时交易数据获取请求")
+    logger.info("收到股票实时数据获取请求")
     logger.info(f"接收到的 data 参数: {json.dumps(data, ensure_ascii=False, indent=2)}")
     logger.info(f"接收到的 args 参数: {json.dumps(args if args else {}, ensure_ascii=False, indent=2)}")
     
@@ -240,26 +264,42 @@ def run(data, args=None):
             'message': 'code_list 参数必须是列表类型'
         }
     
-    logger.info(f"需要获取 {len(code_list)} 个股票的实时交易数据: {code_list}")
+    logger.info(f"需要获取 {len(code_list)} 个股票的实时数据: {code_list}")
     
     # 存储获取到的数据（先不插入数据库）
     stock_data_list = []
     failed_stocks = []
     
-    # 批量获取股票数据
-    # 将股票代码列表转换为字符串列表（确保格式正确）
-    codes = [str(code)+".SH" for code in code_list] + [str(code)+".SZ" for code in code_list]
+    # 将股票代码转换为雪球格式（如 300750 -> SZ300750, 600519 -> SH600519）
+    # 如果代码已经包含市场前缀，直接使用；否则根据代码判断
+    codes = []
+    for code in code_list:
+        code_str = str(code).strip()
+        # 如果代码以 SH/SZ 开头，直接使用
+        if code_str.startswith('SH') or code_str.startswith('SZ'):
+            codes.append(code_str)
+        # 如果代码以 6 开头，认为是上海市场
+        elif code_str.startswith('6'):
+            codes.append(f'SH{code_str}')
+        # 如果代码以 0/3 开头，认为是深圳市场
+        elif code_str.startswith('0') or code_str.startswith('3'):
+            codes.append(f'SZ{code_str}')
+        else:
+            # 默认尝试深圳市场
+            codes.append(f'SZ{code_str}')
+            logger.warning(f"无法判断股票代码 {code_str} 的市场，默认使用深圳市场")
     
     # 调用批量API获取数据
     result_data, status_code = fetch_stock_data_batch(codes)
     
     if result_data and status_code == 200:
-        # 创建代码到数据的映射（使用 s 字段作为标的名称）
+        # 创建代码到数据的映射（使用 symbol 字段作为股票代码）
         code_to_data = {}
         for item in result_data:
-            symbol = item.get('s')  # s 字段是标的名称
-            if symbol:
-                code_to_data[symbol] = item
+            if isinstance(item, dict):
+                symbol = item.get('symbol') or item.get('code')  # symbol 或 code 字段是股票代码
+                if symbol:
+                    code_to_data[symbol] = item
         
         # 将返回的数据与请求的代码列表匹配
         for code in codes:
@@ -268,8 +308,6 @@ def run(data, args=None):
                 stock_data = code_to_data[code].copy()
                 # 添加股票代码字段（使用原始代码）
                 stock_data['stock_code'] = code
-                # 字段映射：保持原有字段名，同时添加中文注释
-                # s: 标的名称, t: 交易时间, p: 价格, v: 成交量, vw: 成交额, td: 交易方向
                 stock_data_list.append(stock_data)
             else:
                 # 如果找不到匹配的数据，记录为失败
