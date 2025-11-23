@@ -7,6 +7,7 @@ import logging
 import json
 import os
 import sys
+from datetime import datetime
 import websocket  # 使用 websocket-client 库
 
 # 确保项目根路径在 sys.path 中，便于绝对导入
@@ -137,12 +138,28 @@ class WebSocketClient:
                     logger.warning(f"无法解析 message 字段中的 JSON: {message_data}")
                     return
             
+            # 如果没有 message 字段，直接使用 parsed_message
+            if message_data is None:
+                message_data = parsed_message
+            
             # 检查消息类型
             if not isinstance(message_data, dict):
                 logger.warning(f"消息格式无效，期望字典类型: {type(message_data)}")
                 return
             
             message_type = message_data.get('type')
+            
+            # 处理 ping 消息
+            if message_type == 'ping':
+                logger.debug("收到 ping 消息，回复 pong")
+                try:
+                    self.ws.send(json.dumps({
+                        "type": "pong",
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                except Exception as e:
+                    logger.error(f"发送 pong 回复失败: {e}")
+                return
             
             # 处理 shutdown 命令
             if message_type == 'shutdown':
