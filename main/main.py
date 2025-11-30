@@ -140,7 +140,7 @@ def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> T
 
         doc = stock_data.copy()
         doc['update_time'] = timestamp
-        doc['date'] = timestamp.date()
+        
 
         try:
             if filter_query:
@@ -159,7 +159,7 @@ def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> T
     return success_count, fail_count
 
 
-def persist_close_snapshot(stock_data_list: List[Dict]) -> Tuple[int, int]:
+def persist_close_snapshot(stock_data_list: List[Dict], timestamp: datetime) -> Tuple[int, int]:
     """
     将收盘快照写入 close 表
     """
@@ -171,6 +171,9 @@ def persist_close_snapshot(stock_data_list: List[Dict]) -> Tuple[int, int]:
 
     for stock_data in stock_data_list:
         doc = stock_data.copy()
+        doc['date'] = str(timestamp.date())
+        doc['date'] = datetime.strptime(doc['date'], '%Y-%m-%d')
+        doc['close'] = doc['current']
         docs.append(doc)
 
     try:
@@ -372,7 +375,7 @@ def run(data, args=None):
         success_count, fail_count = persist_realtime_data(stock_data_list, store_time)
 
         if should_capture_close_snapshot(store_time):
-            close_success, close_fail = persist_close_snapshot(stock_data_list)
+            close_success, close_fail = persist_close_snapshot(stock_data_list, store_time)
             if close_fail > 0:
                 logger.warning(f"保存收盘快照时有 {close_fail} 条数据失败")
             else:
