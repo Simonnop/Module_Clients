@@ -31,11 +31,8 @@ SERVER_PORT = int(SERVER_PORT)
 
 CONFIG = {
     # 模块信息
-    "name": "股票 RSI 监控与实时数据采集模块",
-    "description": (
-        "默认使用 args.code_list 获取实时行情写入数据库，"
-        "同时支持传入 items 执行 RSI 监控并触发邮件通知"
-    ),
+    "name": "股票RSI监控模块",
+    "description": "监控股票RSI指标，当RSI指标超过阈值时发送邮件通知",
 
     # 输入数据需求
     "input_data": [
