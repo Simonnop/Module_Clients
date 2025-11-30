@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-单次运行 main 模块的脚本
+单次运行 main 模块的脚本（仅 RSI 监控）
 用法:
-    python run_main.py --codes TSLA.US AAPL.US
-    python run_main.py --codes TSLA.US AAPL.US  # 批量获取股票数据
+    python run_main.py --items '{"items":[{"code":"SH600900","name":"长江电力","rsi_high":70,"rsi_low":30,"emails":["a@qq.com","b@qq.com"]}]}'
 """
 import sys
 import argparse
@@ -15,9 +14,23 @@ from pathlib import Path
 main_dir = Path(__file__).parent / 'main'
 sys.path.insert(0, str(main_dir))
 
+DEFAULT_RSI_ITEMS = {
+    "items": [
+        {
+            "code": "SH600900",
+            "name": "长江电力",
+            "rsi_high": 70,
+            "rsi_low": 30,
+            "emails": [
+                "741617293@qq.com"
+            ]
+        }
+    ]
+}
+
 # 导入 main 模块
 try:
-    from main import run
+    from main import run, close_mongo_connection
 except ImportError as e:
     print(f"导入模块失败: {e}")
     print("请确保 main/main.py 存在")
@@ -29,30 +42,22 @@ def main():
     主函数 - 解析命令行参数并执行
     """
     parser = argparse.ArgumentParser(
-        description='单次运行股票实时交易数据获取模块',
+        description='单次运行 RSI 监控模块',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python run_main.py --codes TSLA.US AAPL.US
-  python run_main.py --codes TSLA.US AAPL.US USDCNY
-        """
+  python run_main.py --items '{"items":[{"code":"SH600900","name":"长江电力","rsi_high":70,"rsi_low":30,"emails":["741617293@qq.com"]}]}'"""
     )
+    default_items_json = json.dumps(DEFAULT_RSI_ITEMS, ensure_ascii=False)
     parser.add_argument(
-        '--codes', '-c',
-        nargs='+',
-        required=True,
-        help='股票代码列表，例如: --codes TSLA.US AAPL.US'
+        '--items', '-i',
+        default=default_items_json,
+        help='RSI 监控参数 JSON 字符串，例如: --items \'{"items":[...]}\'. 默认使用内置示例'
     )
     
     args = parser.parse_args()
     
     try:
-        # 如果没有提供股票代码，显示帮助信息
-        if not args.codes:
-            parser.print_help()
-            print("\n示例: python run_main.py --codes TSLA.US AAPL.US")
-            return
-        
         # 准备参数
         data = {
             'meta': {
@@ -60,14 +65,18 @@ def main():
                 'source': 'run_main_script'
             }
         }
-        run_args = {
-            'code_list': args.codes
-        }
+        try:
+            parsed = json.loads(args.items)
+        except json.JSONDecodeError as exc:
+            print(f"解析 items 参数失败: {exc}")
+            sys.exit(1)
+
+        run_args = parsed
         
         # 执行数据获取
-        print(f"\n开始获取 {len(args.codes)} 个股票的实时交易数据: {', '.join(args.codes)}\n")
+        print("\n开始执行 RSI 监控\n")
         result = run(data, run_args)
-        
+
         # 显示结果
         print("\n" + "=" * 60)
         print("执行结果:")
@@ -76,15 +85,15 @@ def main():
         print(f"总数: {result.get('total', 0)}")
         print(f"成功: {result.get('success_count', 0)}")
         print(f"失败: {result.get('failed_count', 0)}")
-        
+
         if result.get('failed_stocks'):
             print(f"失败的股票代码: {', '.join(result['failed_stocks'])}")
-        
+
         if result.get('message'):
             print(f"消息: {result['message']}")
-        
+
         print("=" * 60)
-        
+
         # 根据结果设置退出码
         if result.get('status') == 'error' or result.get('failed_count', 0) > 0:
             sys.exit(1)
@@ -99,6 +108,8 @@ def main():
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        close_mongo_connection()
 
 
 if __name__ == "__main__":

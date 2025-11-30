@@ -207,6 +207,41 @@ Module_Clients/
 - **连接复用**：MongoDB 连接和集合对象全局复用，避免重复创建连接
 - **批量获取**：支持一次请求获取多个股票数据，提高效率
 
+### RSI 监控模块（唯一执行入口）
+
+本模块改为只负责 RSI 监控：`run` 接口必须在 `args.items` 中传入要监控的列表才能执行，数据由 `close` 和 `current` 表提供历史与实时价格组合，触发 `rsi_high`/`rsi_low` 会通过 HTTP 邮件服务通知收件人，并把通知记录到 `signal` 表与 `logs/rsi_state.json`，确保每日每票只通知一次。
+
+示例参数结构：
+```json
+{
+  "args": {
+    "items": [
+      {
+        "code": "SH600900",
+        "name": "长江电力",
+        "rsi_high": 70,
+        "rsi_low": 30,
+        "emails": [
+          "741617293@qq.com",
+          "2804966357@qq.com"
+        ]
+      }
+    ]
+  }
+}
+```
+
+需要预先配置的环境变量：
+
+- `MONGODB_CURRENT_COLLECTION_NAME`（默认 `current`）：RSI 监控读取实时价格集合
+- `RSI_PERIOD`（默认 14）：计算 RSI 所需周期
+- `RSI_HISTORY_DAYS`（默认 `RSI_PERIOD` 的两倍）：每天加载的历史收盘价数量
+- `EMAIL_SEND_URL`（默认 `http://119.45.129.116:10101/send`）：调用 HTTP 接口发送邮件通知
+- `EMAIL_SEND_TIMEOUT`（默认 10）：HTTP 请求超时时间
+- `MONGODB_SIGNAL_COLLECTION_NAME`（默认 `signal`）：记录已通知票的集合
+
+日志文件 `logs/rsi_state.json` 用于记录当天已通知的股票和缓存的历史收盘价。
+
 ## 注意事项
 
 - 确保服务器地址和端口配置正确

@@ -30,19 +30,41 @@ if not SERVER_PORT:
 SERVER_PORT = int(SERVER_PORT)
 
 CONFIG = {
-
     # 模块信息
-    "name": "股票实时数据获取模块",
-    "description": "收集实时数据，在 realtime 表更新，收盘后将 realtime 数据保存的到 close 表",
-    
+    "name": "股票 RSI 监控与实时数据采集模块",
+    "description": (
+        "默认使用 args.code_list 获取实时行情写入数据库，"
+        "同时支持传入 items 执行 RSI 监控并触发邮件通知"
+    ),
+
     # 输入数据需求
     "input_data": [
-        
+        {
+            "name": "items",
+            "type": "array",
+            "description": "RSI 监控列表，包含阈值和通知邮箱，触发一次后当天禁止重复通知",
+            "items": {
+                "code": "string",
+                "name": "string",
+                "rsi_high": "number",
+                "rsi_low": "number",
+                "emails": "array"
+            }
+        }
     ],
     
     # 输出数据需求
     "output_data": [
-        
+        {
+            "name": "items",
+            "type": "array",
+            "description": "每个 item 返回 RSI 当前值、价格、告警类型、是否已通知等信息"
+        },
+        {
+            "name": "errors",
+            "type": "array",
+            "description": "RSI 监控过程中的错误或数据缺失提示"
+        }
     ]
 }
 
