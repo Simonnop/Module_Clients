@@ -33,7 +33,7 @@ CONFIG = {
 
     # 模块信息
     "name": "股票实时数据获取模块",
-    "description": "股票实时数据获取模块,从雪球API批量获取股票实时数据并保存到MongoDB数据库",
+    "description": "收集实时数据，在 realtime 表更新，收盘后将 realtime 数据保存的到 close 表",
     
     # 输入数据需求
     "input_data": [

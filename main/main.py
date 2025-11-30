@@ -7,7 +7,7 @@ import logging
 import json
 import time
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -37,13 +37,14 @@ logger = logging.getLogger(__name__)
 
 # MongoDB配置（从环境变量读取）
 MONGODB_HOST = os.getenv('MONGODB_HOST')
-MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'forecast_platform')
-MONGODB_COLLECTION_NAME = os.getenv('MONGODB_COLLECTION_NAME', 'stock_data')
+MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'finance_data')
+MONGODB_REALTIME_COLLECTION_NAME = os.getenv('MONGODB_REALTIME_COLLECTION_NAME', 'realtime')
+MONGODB_CLOSE_COLLECTION_NAME = os.getenv('MONGODB_CLOSE_COLLECTION_NAME', 'close')
 
 # MongoDB客户端（延迟初始化）
 _mongo_client = None
 _mongo_db = None
-_mongo_collection = None
+_collection_cache: Dict[str, Any] = {}
 
 # 雪球 token（延迟初始化）
 _xueqiu_token = None
@@ -89,51 +90,99 @@ def get_mongo_db():
     return _mongo_db
 
 
-def get_mongo_collection():
+def get_mongo_collection(collection_name: str):
     """
-    获取MongoDB集合对象（延迟初始化）
-    
-    Returns:
-        MongoDB集合对象
+    获取指定名称的 MongoDB 集合（缓存复用）
     """
-    global _mongo_collection
-    
-    if _mongo_collection is None:
-        db = get_mongo_db()
-        _mongo_collection = db[MONGODB_COLLECTION_NAME]
-        logger.info(f"已初始化集合: {MONGODB_COLLECTION_NAME}")
-    
-    return _mongo_collection
+    global _collection_cache
 
-def save_stock_data_batch_to_mongodb(stock_data_list: List[Dict]) -> tuple:
+    if collection_name in _collection_cache:
+        return _collection_cache[collection_name]
+
+    db = get_mongo_db()
+    collection = db[collection_name]
+    _collection_cache[collection_name] = collection
+    logger.info(f"已初始化集合: {collection_name}")
+    return collection
+
+def should_capture_close_snapshot(current_time: datetime) -> bool:
     """
-    批量保存股票数据到MongoDB
-    
-    Args:
-        stock_data_list: 股票数据字典列表
-        
-    Returns:
-        (成功数量, 失败数量) 元组
+    判断当前时间是否已经进入收盘后（下午3点及之后）
+    """
+    return current_time.hour >= 15
+
+
+def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> Tuple[int, int]:
+    """
+    使用 upsert 方式将实时数据写入实时集合
     """
     if not stock_data_list:
         return (0, 0)
-    
+
+    collection = get_mongo_collection(MONGODB_REALTIME_COLLECTION_NAME)
+    success_count = 0
+    fail_count = 0
+
+    for stock_data in stock_data_list:
+        stock_code = stock_data.get('stock_code')
+        symbol = stock_data.get('symbol')
+        code = stock_data.get('code')
+
+        # 更新时匹配的字段：优先使用 stock_code，其次尝试 symbol/code
+        if stock_code:
+            filter_query = {'stock_code': stock_code}
+        elif symbol:
+            filter_query = {'symbol': symbol}
+        elif code:
+            filter_query = {'code': code}
+        else:
+            filter_query = None
+
+        doc = stock_data.copy()
+        doc.setdefault('create_time', timestamp)
+        doc['collected_time'] = timestamp
+        doc['update_time'] = timestamp
+
+        try:
+            if filter_query:
+                collection.replace_one(filter_query, doc, upsert=True)
+            else:
+                # 没有可用的唯一键，直接插入新文档
+                collection.insert_one(doc)
+            success_count += 1
+        except Exception as exc:
+            fail_count += 1
+            logger.error(f"保存实时数据到 {MONGODB_REALTIME_COLLECTION_NAME} 失败 ({stock_code}): {exc}")
+
+    logger.info(
+        f"实时集合 {MONGODB_REALTIME_COLLECTION_NAME} 更新完成: 成功写入 {success_count} 条，失败 {fail_count} 条"
+    )
+    return success_count, fail_count
+
+
+def persist_close_snapshot(stock_data_list: List[Dict], snapshot_time: datetime) -> Tuple[int, int]:
+    """
+    将收盘快照写入 close 表
+    """
+    if not stock_data_list:
+        return (0, 0)
+
+    collection = get_mongo_collection(MONGODB_CLOSE_COLLECTION_NAME)
+    docs = []
+
+    for stock_data in stock_data_list:
+        doc = stock_data.copy()
+        doc['snapshot_time'] = snapshot_time
+        docs.append(doc)
+
     try:
-        collection = get_mongo_collection()
-        
-        # 添加时间戳
-        now = datetime.now()
-        for stock_data in stock_data_list:
-            stock_data['create_time'] = now
-        
-        # 批量插入数据
-        result = collection.insert_many(stock_data_list)
-        logger.info(f"成功批量保存 {len(result.inserted_ids)} 条股票数据到MongoDB")
-        return (len(result.inserted_ids), 0)
-        
-    except Exception as e:
-        logger.error(f"批量保存股票数据到MongoDB失败: {e}")
-        return (0, len(stock_data_list))
+        result = collection.insert_many(docs)
+        success = len(result.inserted_ids)
+        logger.info(f"收盘集合 {MONGODB_CLOSE_COLLECTION_NAME} 插入 {success} 条快照数据")
+        return success, 0
+    except Exception as exc:
+        logger.error(f"保存收盘数据到 {MONGODB_CLOSE_COLLECTION_NAME} 失败: {exc}")
+        return 0, len(docs)
 
 
 def get_xueqiu_token() -> Optional[str]:
@@ -321,13 +370,18 @@ def run(data, args=None):
     
     # 统一批量插入数据库
     if stock_data_list:
-        logger.info(f"开始批量插入 {len(stock_data_list)} 条股票数据到数据库...")
-        success_count, fail_count = save_stock_data_batch_to_mongodb(stock_data_list)
-        
-        if fail_count > 0:
-            logger.warning(f"批量插入时有 {fail_count} 条数据插入失败")
+        store_time = datetime.now()
+        success_count, fail_count = persist_realtime_data(stock_data_list, store_time)
+
+        if should_capture_close_snapshot(store_time):
+            close_success, close_fail = persist_close_snapshot(stock_data_list, store_time)
+            if close_fail > 0:
+                logger.warning(f"保存收盘快照时有 {close_fail} 条数据失败")
+            else:
+                logger.info(f"收盘快照保存完成，共 {close_success} 条")
     else:
         success_count = 0
+        fail_count = 0
         logger.warning("没有成功获取到任何股票数据")
     
     # 构建返回结果（只返回执行状态，不返回数据）

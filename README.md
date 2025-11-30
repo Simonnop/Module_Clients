@@ -63,9 +63,8 @@ cp config/.env.example config/.env
 - `SERVER_PORT` - 服务器端口
 - `MONGODB_HOST` - MongoDB 连接字符串（完整连接字符串，如 `mongodb+srv://...` 或 `mongodb://...`）
 - `MONGODB_DB_NAME` - MongoDB 数据库名称（可选，默认 `forecast_platform`）
-- `MONGODB_COLLECTION_NAME` - MongoDB 集合名称（可选，默认 `stock_data`）
-- `INFOWAY_API_BASE_URL` - Infoway API基础URL（可选，默认 `https://data.infoway.io`）
-- `INFOWAY_API_KEY` - Infoway API密钥（必需）
+- `MONGODB_REALTIME_COLLECTION_NAME` - 实时数据集合名称（可选，默认 `realtime`，可通过 `MONGODB_COLLECTION_NAME` 兼容老配置）
+- `MONGODB_CLOSE_COLLECTION_NAME` - 收盘快照集合名称（可选，默认 `close`）
 - `HEARTBEAT_INTERVAL` - 心跳间隔秒数（可选，默认 10 秒）
 
 ### 3. 启动模块
