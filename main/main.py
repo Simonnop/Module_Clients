@@ -5,10 +5,9 @@ import json
 import logging
 import os
 import requests
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 import atexit
 from dotenv import load_dotenv
 from pymongo import DESCENDING, MongoClient
@@ -47,10 +46,11 @@ MONGODB_SIGNAL_COLLECTION_NAME = os.getenv('MONGODB_SIGNAL_COLLECTION_NAME', 'si
 MONGODB_CURRENT_COLLECTION_NAME = os.getenv('MONGODB_CURRENT_COLLECTION_NAME', 'stock_current')
 MONGODB_MAX_POOL_SIZE = int(os.getenv('MONGODB_MAX_POOL_SIZE', '5'))
 
-# RSI 相关配置
-RSI_PERIOD = int(os.getenv('RSI_PERIOD', '14'))
-RSI_HISTORY_DAYS = int(os.getenv('RSI_HISTORY_DAYS', str(max(RSI_PERIOD * 2, RSI_PERIOD + 1))))
-RSI_STATE_FILE = base_dir / 'logs' / 'rsi_state.json'
+# 双均线相关配置
+MA_FAST_DEFAULT = int(os.getenv('MA_FAST_PERIOD', '5'))
+MA_SLOW_DEFAULT = int(os.getenv('MA_SLOW_PERIOD', '20'))
+MA_HISTORY_DAYS = int(os.getenv('MA_HISTORY_DAYS', str(max(MA_SLOW_DEFAULT * 2, MA_SLOW_DEFAULT + 5))))
+MA_STATE_FILE = base_dir / 'logs' / 'ma_cross_state.json'
 
 # 邮件通知配置（使用外部HTTP服务）
 EMAIL_SEND_URL = os.getenv('EMAIL_SEND_URL', 'http://localhost:10101/send')
@@ -80,7 +80,7 @@ class MongoConnectionManager:
                     maxPoolSize=MONGODB_MAX_POOL_SIZE,
                     connect=False,
                     serverSelectionTimeoutMS=5000,
-                    appname='module-clients-rsi'
+                    appname='module-clients-ma-cross'
                 )
                 logger.info(f"已连接到MongoDB数据库: {MONGODB_DB_NAME}")
             except PyMongoError as exc:
@@ -181,45 +181,45 @@ def _extract_price_from_doc(doc: Dict[str, Any]) -> Optional[float]:
     return None
 
 
-def load_rsi_state() -> Dict[str, Any]:
+def load_ma_state() -> Dict[str, Any]:
     """
-    读取本地的 RSI 状态文件
+    读取本地的双均线状态文件
     """
-    if not RSI_STATE_FILE.exists():
-        return {'date': '', 'history': {}, 'notifications': []}
+    if not MA_STATE_FILE.exists():
+        return {'date': '', 'history': {}, 'notifications': {}}
 
     try:
-        with open(RSI_STATE_FILE, 'r', encoding='utf-8') as f:
+        with open(MA_STATE_FILE, 'r', encoding='utf-8') as f:
             state = json.load(f)
     except Exception as exc:
-        logger.warning(f"RSI 状态文件读取失败，将重建: {exc}")
-        return {'date': '', 'history': {}, 'notifications': []}
+        logger.warning(f"双均线状态文件读取失败，将重建: {exc}")
+        return {'date': '', 'history': {}, 'notifications': {}}
 
     state.setdefault('history', {})
-    state.setdefault('notifications', [])
+    state.setdefault('notifications', {})
     return state
 
 
-def save_rsi_state(state: Dict[str, Any]) -> None:
+def save_ma_state(state: Dict[str, Any]) -> None:
     """
-    将 RSI 状态保存到日志目录
+    将双均线状态保存到日志目录
     """
     filtered_history: Dict[str, List[float]] = {}
     for code, prices in state.get('history', {}).items():
-        filtered_history[code] = prices[-RSI_HISTORY_DAYS:]
+        filtered_history[code] = prices[-MA_HISTORY_DAYS:]
 
     serialized = {
         'date': state.get('date', ''),
         'history': filtered_history,
-        'notifications': sorted(set(state.get('notifications', [])))
+        'notifications': state.get('notifications', {})
     }
 
-    RSI_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    MA_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(RSI_STATE_FILE, 'w', encoding='utf-8') as f:
+        with open(MA_STATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(serialized, f, ensure_ascii=False, indent=2)
     except Exception as exc:
-        logger.warning(f"保存 RSI 状态失败: {exc}")
+        logger.warning(f"保存双均线状态失败: {exc}")
 
 
 def fetch_close_history(stock_code: str, limit: int) -> List[float]:
@@ -261,13 +261,13 @@ def fetch_current_price(stock_code: str) -> Optional[float]:
     return _extract_price_from_doc(doc)
 
 
-def ensure_close_history(stock_code: str, state: Dict[str, Any], refresh_all: bool) -> List[float]:
+def ensure_close_history(stock_code: str, state: Dict[str, Any], refresh_all: bool, history_days: int) -> List[float]:
     """
     确保 state 中缓存了当天的收盘价格
     """
     cached: List[float] = state.get('history', {}).get(stock_code, [])
     if refresh_all:
-        history = fetch_close_history(stock_code, RSI_HISTORY_DAYS)
+        history = fetch_close_history(stock_code, history_days)
         if history:
             state.setdefault('history', {})[stock_code] = history
             return history
@@ -275,46 +275,38 @@ def ensure_close_history(stock_code: str, state: Dict[str, Any], refresh_all: bo
 
     return cached
 
-def compute_rsi_from_prices(price_series: Sequence[float], period=RSI_PERIOD):
+def compute_ma_cross_signal(price_series: Sequence[float], fast_period: int, slow_period: int) -> Optional[Dict[str, float]]:
     """
-    计算RSI指标的辅助函数
-    
-    参数:
-        price_series: 数值序列，价格序列（通常是收盘价）
-        period: int, RSI计算周期，默认RSI_PERIOD
-    
-    返回:
-        float | None: 最新一条RSI值，计算失败时返回None
+    计算双均线交叉
     """
+    if fast_period <= 0 or slow_period <= 0 or fast_period >= slow_period:
+        return None
 
-    # 计算RSI
-    # 计算价格变化
-    delta = pd.Series(price_series).diff()
-    
-    # 上涨和下跌分解
-    gain = np.where(delta > 0, delta, 0)   # 上涨部分
-    loss = np.where(delta < 0, -delta, 0)  # 下跌部分
-    
-    # 计算平均涨跌幅（简单移动平均版本）
-    roll_gain = pd.Series(gain, index=pd.Series(price_series).index).rolling(
-        window=period, min_periods=period
-    ).mean()
-    roll_loss = pd.Series(loss, index=pd.Series(price_series).index).rolling(
-        window=period, min_periods=period
-    ).mean()
-    
-    # 避免除零
-    rs = roll_gain / roll_loss.replace(0, np.nan)
-    
-    # 计算RSI
-    rsi = 100 - (100 / (1 + rs))
-    
-    # 获取当前时点的RSI值
-    current_rsi = rsi.iloc[-1]
+    if len(price_series) < slow_period + 1:
+        return None
 
-    logger.info(f"current_rsi: {current_rsi}")
+    series = pd.Series(price_series, dtype=float)
+    fast_ma = series.rolling(window=fast_period, min_periods=fast_period).mean()
+    slow_ma = series.rolling(window=slow_period, min_periods=slow_period).mean()
 
-    return current_rsi
+    prev_diff = fast_ma.iloc[-2] - slow_ma.iloc[-2]
+    curr_diff = fast_ma.iloc[-1] - slow_ma.iloc[-1]
+    if pd.isna(prev_diff) or pd.isna(curr_diff):
+        return None
+
+    cross = None
+    if prev_diff < 0 <= curr_diff:
+        cross = 'gold_cross'
+    elif prev_diff > 0 >= curr_diff:
+        cross = 'death_cross'
+
+    return {
+        'cross': cross,
+        'fast_ma': float(fast_ma.iloc[-1]),
+        'slow_ma': float(slow_ma.iloc[-1]),
+        'prev_diff': float(prev_diff),
+        'curr_diff': float(curr_diff)
+    }
 
 def send_email_notification(subject: str, body: str, recipients: List[str]) -> bool:
     """
@@ -348,7 +340,7 @@ def send_email_notification(subject: str, body: str, recipients: List[str]) -> b
     return success
 
 
-def save_signal_notification(stock_code: str, display_name: str, alert_type: str, rsi_value: float, current_price: float, recipients: List[str]) -> None:
+def save_signal_notification(stock_code: str, display_name: str, alert_type: str, metric_value: float, current_price: float, recipients: List[str]) -> None:
     """
     将通知事件记录到 signal 集合，便于跨进程追踪和防止重复通知
     """
@@ -360,7 +352,7 @@ def save_signal_notification(stock_code: str, display_name: str, alert_type: str
         'stock_code': stock_code,
         'name': display_name,
         'alert_type': alert_type,
-        'rsi': rsi_value,
+        'value': metric_value,
         'current_price': current_price,
         'recipients': recipients,
         'alert_time': datetime.now(),
@@ -374,30 +366,33 @@ def save_signal_notification(stock_code: str, display_name: str, alert_type: str
         logger.warning(f"保存 signal 通知失败: {exc}")
 
 
-def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[str, Any]:
+def run_ma_cross_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    RSI 监控主逻辑
+    双均线监控主逻辑
     """
-    logger.info("进行 RSI 检测...")
+    logger.info("进行双均线检测...")
     today = datetime.now().strftime('%Y-%m-%d')
-    state = load_rsi_state()
+    state = load_ma_state()
     is_new_day = state.get('date') != today
     if is_new_day:
         logger.info(f"新的一天开始: {today}")
-        state = {'date': today, 'history': {}, 'notifications': []}
+        state = {'date': today, 'history': {}, 'notifications': {}}
 
     state['date'] = today
+    state.setdefault('notifications', {})
+    state.setdefault('history', {})
 
-    notified_codes: Set[str] = set(state.get('notifications', []))
+    notified_map: Dict[str, str] = state.get('notifications', {})
     results: List[Dict[str, Any]] = []
     errors: List[str] = []
 
     for entry in items:
         if not isinstance(entry, dict):
-            msg = f"RSI 条目格式错误，期望字典，实际: {type(entry)}"
+            msg = f"双均线条目格式错误，期望字典，实际: {type(entry)}"
             logger.warning(msg)
             errors.append(msg)
             continue
+
         raw_code = entry.get('code') or entry.get('stock_code') or entry.get('symbol')
         stock_code = _normalize_stock_code(raw_code)
         display_name = entry.get('name') or stock_code or '未知标的'
@@ -407,10 +402,33 @@ def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[s
             errors.append(error_msg)
             continue
 
-        logger.info(f"开始处理 {display_name} ({stock_code})")
-        history = ensure_close_history(stock_code, state, is_new_day)
-        if len(history) < RSI_PERIOD:
-            msg = f"{stock_code} 历史收盘价不足 {RSI_PERIOD} 条，无法计算 RSI"
+        fast_period = entry.get('fast') or entry.get('ma_fast') or MA_FAST_DEFAULT
+        slow_period = entry.get('slow') or entry.get('ma_slow') or MA_SLOW_DEFAULT
+        try:
+            fast_period = int(fast_period)
+            slow_period = int(slow_period)
+        except (TypeError, ValueError):
+            msg = f"{stock_code} 周期配置无效 fast={fast_period}, slow={slow_period}"
+            logger.warning(msg)
+            errors.append(msg)
+            continue
+
+        if fast_period <= 0 or slow_period <= 0 or fast_period >= slow_period:
+            msg = f"{stock_code} 周期配置不合理，需满足 0<fast<slow"
+            logger.warning(msg)
+            results.append({
+                'code': stock_code,
+                'name': display_name,
+                'status': 'invalid_period',
+                'message': msg
+            })
+            continue
+
+        logger.info(f"开始处理 {display_name} ({stock_code}), fast={fast_period}, slow={slow_period}")
+        history_need = max(MA_HISTORY_DAYS, slow_period + 1)
+        history = ensure_close_history(stock_code, state, is_new_day, history_need)
+        if len(history) < slow_period:
+            msg = f"{stock_code} 历史收盘价不足 {slow_period} 条，无法计算均线"
             logger.warning(msg)
             results.append({
                 'code': stock_code,
@@ -422,7 +440,7 @@ def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[s
 
         current_price = fetch_current_price(stock_code)
         if current_price is None:
-            msg = f"{stock_code} 当前价格无法获取，暂停 RSI 计算"
+            msg = f"{stock_code} 当前价格无法获取，暂停双均线计算"
             logger.warning(msg)
             results.append({
                 'code': stock_code,
@@ -432,78 +450,61 @@ def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[s
             })
             continue
 
-        price_sequence = history[-RSI_PERIOD:] + [current_price]
-        rsi_value = compute_rsi_from_prices(price_sequence)
-        if rsi_value is None:
-            msg = f"{stock_code} RSI 计算失败"
+        price_sequence = history[-(slow_period + 1):] + [current_price]
+        ma_info = compute_ma_cross_signal(price_sequence, fast_period, slow_period)
+        if ma_info is None:
+            msg = f"{stock_code} 双均线计算失败"
             logger.warning(msg)
             results.append({
                 'code': stock_code,
                 'name': display_name,
-                'status': 'rsi_failed',
+                'status': 'ma_failed',
                 'message': msg
             })
             continue
 
-        rsi_high = entry.get('rsi_high')
-        rsi_low = entry.get('rsi_low')
-        try:
-            rsi_high = float(rsi_high) if rsi_high is not None else None
-        except (TypeError, ValueError):
-            rsi_high = None
-        try:
-            rsi_low = float(rsi_low) if rsi_low is not None else None
-        except (TypeError, ValueError):
-            rsi_low = None
-
-        alert_type = None
-        send_mail = False
-        current_alert = None
-        if rsi_high is not None and rsi_value >= rsi_high:
-            alert_type = 'rsi_high'
-            current_alert = f'RSI={rsi_value:.2f} 超过上限 {rsi_high}'
-            send_mail = stock_code not in notified_codes
-        elif rsi_low is not None and rsi_value <= rsi_low:
-            alert_type = 'rsi_low'
-            current_alert = f'RSI={rsi_value:.2f} 低于下限 {rsi_low}'
-            send_mail = stock_code not in notified_codes
-
+        cross_type = ma_info.get('cross')
         notified_flag = False
+        alert_message = None
         recipient_list = entry.get('emails') or []
         if isinstance(recipient_list, str):
             recipient_list = [item.strip() for item in recipient_list.split(',') if item.strip()]
-        if send_mail and alert_type:
-            subject = f"RSI 警示：{display_name} ({stock_code})"
+
+        if cross_type and notified_map.get(stock_code) != cross_type:
+            subject = f"双均线信号：{display_name} ({stock_code})"
             body = (
-                f"{display_name} 的 RSI 值为 {rsi_value:.2f}，触发 {alert_type} 条件。\n"
+                f"{display_name} 触发 {cross_type}。\n"
+                f"fast={fast_period}, slow={slow_period}\n"
+                f"MA_fast={ma_info.get('fast_ma'):.4f}, MA_slow={ma_info.get('slow_ma'):.4f}\n"
                 f"当前价格: {current_price}\n"
-                f"时间: {datetime.now().isoformat()}\n"
-                f"阈值设置：上限 {rsi_high}，下限 {rsi_low}"
+                f"时间: {datetime.now().isoformat()}"
             )
             notified_flag = send_email_notification(subject, body, recipient_list)
             if notified_flag:
-                notified_codes.add(stock_code)
-                save_signal_notification(stock_code, display_name, alert_type, rsi_value, current_price, recipient_list)
+                notified_map[stock_code] = cross_type
+                save_signal_notification(stock_code, display_name, cross_type, ma_info.get('curr_diff', 0.0), current_price, recipient_list)
             else:
-                current_alert = f"RSI {alert_type} 触发，但邮件发送失败"
+                alert_message = f"{cross_type} 触发，但邮件发送失败"
 
         results.append({
             'code': stock_code,
             'name': display_name,
             'status': 'ok',
             'current_price': current_price,
-            'rsi': round(rsi_value, 2),
-            'alert': alert_type,
-            'alert_message': current_alert,
+            'fast_ma': round(ma_info.get('fast_ma', 0), 4),
+            'slow_ma': round(ma_info.get('slow_ma', 0), 4),
+            'diff': round(ma_info.get('curr_diff', 0), 4),
+            'cross': cross_type,
+            'alert_message': alert_message,
             'notified': notified_flag
         })
 
-    state['notifications'] = sorted(notified_codes)
-    save_rsi_state(state)
+    state['notifications'] = notified_map
+    save_ma_state(state)
 
     response = {
         'status': 'success',
-        'type': 'rsi_monitor',
+        'type': 'ma_cross_monitor',
         'items': results,
         'errors': errors
     }
@@ -512,18 +513,18 @@ def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[s
 
 def run(data, args=None):
     """
-    入口：仅执行 RSI 监控
+    入口：执行双均线监控
     """
     if args is None:
         args = {}
 
     items = args.get('items')
     if not isinstance(items, list) or not items:
-        logger.error("缺少有效的 args.items 参数，RSI 监控需要提供非空列表")
+        logger.error("缺少有效的 args.items 参数，双均线监控需要提供非空列表")
         return {
             'status': 'error',
             'message': '缺少非空的 args.items 参数'
         }
 
-    return run_rsi_monitor(data, items)
+    return run_ma_cross_monitor(data, items)
 
