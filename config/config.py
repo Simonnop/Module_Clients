@@ -31,37 +31,13 @@ SERVER_PORT = int(SERVER_PORT)
 
 CONFIG = {
     # 模块信息
-    "name": "股票RSI监控模块",
-    "description": "监控股票RSI指标，当RSI指标超过阈值时发送邮件通知",
+    "name": "股票双均线监控模块",
+    "description": "监控股票双均线金叉/死叉，触发时发送邮件通知并记录信号",
 
     # 输入数据需求
-    "input_data": [
-        {
-            "name": "items",
-            "type": "array",
-            "description": "RSI 监控列表，包含阈值和通知邮箱，触发一次后当天禁止重复通知",
-            "items": {
-                "code": "string",
-                "name": "string",
-                "rsi_high": "number",
-                "rsi_low": "number",
-                "emails": "array"
-            }
-        }
-    ],
+    "input_data": [],
     
     # 输出数据需求
-    "output_data": [
-        {
-            "name": "items",
-            "type": "array",
-            "description": "每个 item 返回 RSI 当前值、价格、告警类型、是否已通知等信息"
-        },
-        {
-            "name": "errors",
-            "type": "array",
-            "description": "RSI 监控过程中的错误或数据缺失提示"
-        }
-    ]
+    "output_data": []
 }
 
