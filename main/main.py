@@ -40,6 +40,7 @@ MONGODB_HOST = os.getenv('MONGODB_HOST')
 MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'finance_data')
 MONGODB_REALTIME_COLLECTION_NAME = os.getenv('MONGODB_REALTIME_COLLECTION_NAME', 'realtime')
 MONGODB_CLOSE_COLLECTION_NAME = os.getenv('MONGODB_CLOSE_COLLECTION_NAME', 'close')
+MONGODB_WATCH_COLLECTION_NAME = os.getenv('MONGODB_WATCH_COLLECTION_NAME', 'stock_watch')
 
 # MongoDB客户端（延迟初始化）
 _mongo_client = None
@@ -104,6 +105,30 @@ def get_mongo_collection(collection_name: str):
     _collection_cache[collection_name] = collection
     logger.info(f"已初始化集合: {collection_name}")
     return collection
+
+
+def get_watch_code_list() -> List[str]:
+    """
+    从 MongoDB 获取需要监控的股票代码列表
+    """
+    collection = get_mongo_collection(MONGODB_WATCH_COLLECTION_NAME)
+    codes: List[str] = []
+
+    try:
+        # 只拿 code 字段，减少网络传输
+        docs = collection.find({}, {'code': 1})
+        for doc in docs:
+            code_value = doc.get('code')
+            if not code_value:
+                continue
+            code_str = str(code_value).strip()
+            if code_str and code_str not in codes:
+                codes.append(code_str)
+        logger.info(f"从集合 {MONGODB_WATCH_COLLECTION_NAME} 获取到 {len(codes)} 个股票代码")
+    except Exception as exc:
+        logger.error(f"读取监控股票列表失败: {exc}")
+
+    return codes
 
 def should_capture_close_snapshot(current_time: datetime) -> bool:
     """
@@ -177,6 +202,15 @@ def persist_close_snapshot(stock_data_list: List[Dict], timestamp: datetime) -> 
         docs.append(doc)
 
     try:
+        # 写入前删除同一天已有的快照，避免重复
+        target_date = docs[0]['date']
+        existing_count = collection.count_documents({'date': target_date})
+        if existing_count > 0:
+            delete_result = collection.delete_many({'date': target_date})
+            logger.info(
+                f"检测到 {target_date.date()} 已有 {existing_count} 条收盘数据，已删除 {delete_result.deleted_count} 条旧数据"
+            )
+
         result = collection.insert_many(docs)
         success = len(result.inserted_ids)
         logger.info(f"收盘集合 {MONGODB_CLOSE_COLLECTION_NAME} 插入 {success} 条快照数据")
@@ -283,7 +317,7 @@ def run(data, args=None):
     
     Args:
         data: 输入数据字典（包含meta信息）
-        args: 从服务器传入的参数字典，应包含code_list字段（股票代码列表）
+        args: 兼容旧接口的参数字典，当前代码列表将从 MongoDB 读取
         
     Returns:
         处理结果字典，包含获取到的股票数据
@@ -292,26 +326,16 @@ def run(data, args=None):
     logger.info("收到股票实时数据获取请求")
     logger.info(f"接收到的 data 参数: {json.dumps(data, ensure_ascii=False, indent=2)}")
     logger.info(f"接收到的 args 参数: {json.dumps(args if args else {}, ensure_ascii=False, indent=2)}")
+    logger.info("股票代码列表将从 MongoDB 获取，忽略外部传入的 code_list")
     
-    # 如果没有传入 args，使用空字典
-    if args is None:
-        args = {}
-    
-    # 获取股票代码列表
-    code_list = args.get('code_list', [])
-    
+    # 从 MongoDB 获取股票代码列表
+    code_list = get_watch_code_list()
+
     if not code_list:
-        logger.error("未提供股票代码列表")
+        logger.error("未从 MongoDB 获取到股票代码列表")
         return {
             'status': 'error',
-            'message': '缺少必需参数: code_list（股票代码列表）'
-        }
-    
-    if not isinstance(code_list, list):
-        logger.error(f"code_list 参数类型错误，期望列表，实际: {type(code_list)}")
-        return {
-            'status': 'error',
-            'message': 'code_list 参数必须是列表类型'
+            'message': '未从 MongoDB 获取到监控股票代码'
         }
     
     logger.info(f"需要获取 {len(code_list)} 个股票的实时数据: {code_list}")

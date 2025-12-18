@@ -40,32 +40,24 @@ def main():
     parser.add_argument(
         '--codes', '-c',
         nargs='+',
-        required=True,
-        help='股票代码列表，例如: --codes TSLA.US AAPL.US'
+        required=False,
+        help='股票代码列表（已弃用，将从 MongoDB 自动读取）'
     )
     
     args = parser.parse_args()
     
     try:
-        # 如果没有提供股票代码，显示帮助信息
-        if not args.codes:
-            parser.print_help()
-            print("\n示例: python run_main.py --codes TSLA.US AAPL.US")
-            return
-        
-        # 准备参数
+        # 准备参数（兼容旧接口，当前代码列表从 MongoDB 读取）
         data = {
             'meta': {
                 'timestamp': datetime.now().isoformat(),
                 'source': 'run_main_script'
             }
         }
-        run_args = {
-            'code_list': args.codes
-        }
+        run_args = {}
         
         # 执行数据获取
-        print(f"\n开始获取 {len(args.codes)} 个股票的实时交易数据: {', '.join(args.codes)}\n")
+        print("\n开始获取股票实时交易数据（代码列表将从 MongoDB 读取）\n")
         result = run(data, run_args)
         
         # 显示结果
