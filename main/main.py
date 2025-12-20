@@ -90,12 +90,32 @@ def run_strategy(signal: str, items: List[Dict[str, Any]], data: Dict[str, Any])
     if not module_path:
         raise ValueError(f"未配置的策略模块: {signal}")
 
+    # 尝试标准包导入
     try:
         module = importlib.import_module(module_path)
-    except Exception as exc:
-        raise ImportError(f"加载策略模块失败 {module_path}: {exc}") from exc
-
-    return module.run(data, {'items': items})
+        return module.run(data, {'items': items})
+    except (ImportError, ModuleNotFoundError) as exc:
+        # 如果包导入失败，尝试直接加载文件（适用于 spec_from_file_location 场景）
+        logger.debug(f"包导入失败，尝试直接加载文件: {module_path}")
+        try:
+            # 将模块路径转换为文件路径
+            # main.strategies.rsi -> main/strategies/rsi.py
+            parts = module_path.split('.')
+            if len(parts) >= 2 and parts[0] == 'main':
+                current_dir = Path(__file__).parent
+                # 构建文件路径：main/strategies/rsi.py
+                file_path = current_dir / Path(*parts[1:]).with_suffix('.py')
+                
+                if file_path.exists():
+                    spec = importlib.util.spec_from_file_location(module_path, str(file_path))
+                    if spec and spec.loader:
+                        module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        return module.run(data, {'items': items})
+            
+            raise ImportError(f"无法找到策略文件: {module_path}") from exc
+        except Exception as file_exc:
+            raise ImportError(f"加载策略模块失败 {module_path}: {file_exc}") from file_exc
 
 
 def run(data, args=None):
