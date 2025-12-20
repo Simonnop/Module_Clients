@@ -2,17 +2,49 @@
 股票实时数据模块 - 策略调度器
 """
 import importlib
+import importlib.util
 import logging
+import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# 缓存 common 模块，避免重复加载
+_common_module_cache = None
+
 
 def _get_common():
     """延迟导入 common 模块，避免循环导入"""
-    from main import common
-    return common
+    global _common_module_cache
+    if _common_module_cache is not None:
+        return _common_module_cache
+    
+    # 尝试标准包导入
+    try:
+        from main import common
+        _common_module_cache = common
+        return common
+    except ImportError:
+        pass
+    
+    # 如果包导入失败，直接加载 common.py 文件（适用于 spec_from_file_location 场景）
+    try:
+        current_dir = Path(__file__).parent
+        common_path = current_dir / 'common.py'
+        if common_path.exists():
+            spec = importlib.util.spec_from_file_location("main.common", str(common_path))
+            if spec and spec.loader:
+                common_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(common_module)
+                _common_module_cache = common_module
+                return common_module
+    except Exception as e:
+        logger.error(f"加载 common 模块失败: {e}")
+        raise ImportError(f"无法导入 common 模块: {e}") from e
+    
+    raise ImportError("无法找到 common 模块")
 
 # 信号名称到策略模块的映射，新增策略时在此注册
 STRATEGY_MODULES: Dict[str, str] = {
