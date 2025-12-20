@@ -1,107 +1,86 @@
 #!/usr/bin/env python3
 """
-单次运行 main 模块的脚本（仅 RSI 监控）
-用法:
-    python run_main.py --items '{"items":[{"code":"SH600900","name":"长江电力","rsi_high":70,"rsi_low":30,"emails":["a@qq.com","b@qq.com"]}]}'
+单次运行 main 调度器脚本（从 MongoDB 读取 stock_watch，支持多策略）
+用法示例:
+    python run_main.py --signal rsi
 """
 import sys
 import argparse
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
-# 添加 main 目录到 Python 路径
-main_dir = Path(__file__).parent / 'main'
-sys.path.insert(0, str(main_dir))
+# 将项目根目录加入路径，便于导入 main 包
+root_dir = Path(__file__).parent
+sys.path.insert(0, str(root_dir))
 
-DEFAULT_RSI_ITEMS = {
-    "items": [
-        {
-            "code": "SH600900",
-            "name": "长江电力",
-            "rsi_high": 70,
-            "rsi_low": 30,
-            "emails": [
-                "741617293@qq.com"
-            ]
-        }
-    ]
-}
-
-# 导入 main 模块
 try:
-    from main import run, close_mongo_connection
+    from main import main as entry
+    from main import common as common_lib
 except ImportError as e:
     print(f"导入模块失败: {e}")
-    print("请确保 main/main.py 存在")
+    print("请确保 main 包可用")
     sys.exit(1)
+
+# 脚本级日志（策略内部仍使用 common 的配置）
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+def format_signal_result(signal: str, result: dict) -> str:
+    """格式化单个策略执行结果"""
+    lines = [
+        f"信号: {signal}",
+        f"状态: {result.get('status', 'unknown')}",
+    ]
+    if result.get('message'):
+        lines.append(f"消息: {result.get('message')}")
+    if result.get('errors'):
+        lines.append(f"错误: {result.get('errors')}")
+    items = result.get('items') or []
+    lines.append(f"标的数量: {len(items)}")
+    return "\n".join(lines)
 
 
 def main():
-    """
-    主函数 - 解析命令行参数并执行
-    """
-    parser = argparse.ArgumentParser(
-        description='单次运行 RSI 监控模块',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  python run_main.py --items '{"items":[{"code":"SH600900","name":"长江电力","rsi_high":70,"rsi_low":30,"emails":["741617293@qq.com"]}]}'"""
-    )
-    default_items_json = json.dumps(DEFAULT_RSI_ITEMS, ensure_ascii=False)
-    parser.add_argument(
-        '--items', '-i',
-        default=default_items_json,
-        help='RSI 监控参数 JSON 字符串，例如: --items \'{"items":[...]}\'. 默认使用内置示例'
-    )
-    
+    """解析命令行并执行调度"""
+    parser = argparse.ArgumentParser(description='运行多策略监控（从 stock_watch 拉取）')
+    parser.add_argument('--signal', '-s', help='仅运行指定信号，如 rsi 或 ma_cross', default=None)
     args = parser.parse_args()
-    
-    try:
-        # 准备参数
-        data = {
-            'meta': {
-                'timestamp': datetime.now().isoformat(),
-                'source': 'run_main_script'
-            }
+
+    run_args = {}
+    if args.signal:
+        run_args['signal'] = args.signal
+
+    data = {
+        'meta': {
+            'timestamp': datetime.now().isoformat(),
+            'source': 'run_main_script'
         }
-        try:
-            parsed = json.loads(args.items)
-        except json.JSONDecodeError as exc:
-            print(f"解析 items 参数失败: {exc}")
-            sys.exit(1)
+    }
 
-        run_args = parsed
-        
-        # 执行数据获取
-        print("\n开始执行 RSI 监控\n")
-        result = run(data, run_args)
+    try:
+        logger.info("开始执行监控调度")
+        result = entry.run(data, run_args)
 
-        # 显示结果
         print("\n" + "=" * 60)
-        print("执行结果:")
+        print("执行结果")
         print("=" * 60)
-        print(f"状态: {result.get('status', 'unknown')}")
-        print(f"总数: {result.get('total', 0)}")
-        print(f"成功: {result.get('success_count', 0)}")
-        print(f"失败: {result.get('failed_count', 0)}")
+        print(f"总体状态: {result.get('status', 'unknown')}")
+        print(f"执行信号: {', '.join(result.get('executed_signals', []))}")
+        if result.get('errors'):
+            print(f"调度错误: {result['errors']}")
 
-        if result.get('failed_stocks'):
-            print(f"失败的股票代码: {', '.join(result['failed_stocks'])}")
+        print("-" * 60)
+        for signal, res in (result.get('results') or {}).items():
+            print(format_signal_result(signal, res))
+            print("-" * 60)
 
-        if result.get('message'):
-            print(f"消息: {result['message']}")
-
-        print("=" * 60)
-
-        # 根据结果设置退出码
-        if result.get('status') == 'error' or result.get('failed_count', 0) > 0:
-            sys.exit(1)
-        else:
-            sys.exit(0)
-            
+        exit_err = result.get('status') == 'error' or bool(result.get('errors'))
+        sys.exit(1 if exit_err else 0)
     except KeyboardInterrupt:
-        print("\n\n用户中断操作")
+        print("\n用户中断")
         sys.exit(1)
     except Exception as e:
         print(f"\n执行过程中发生错误: {e}")
@@ -109,9 +88,8 @@ def main():
         traceback.print_exc()
         sys.exit(1)
     finally:
-        close_mongo_connection()
+        common_lib.close_mongo_connection()
 
 
 if __name__ == "__main__":
     main()
-
