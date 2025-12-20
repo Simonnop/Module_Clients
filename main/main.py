@@ -6,9 +6,13 @@ import logging
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from main import common
-
 logger = logging.getLogger(__name__)
+
+
+def _get_common():
+    """延迟导入 common 模块，避免循环导入"""
+    from main import common
+    return common
 
 # 信号名称到策略模块的映射，新增策略时在此注册
 STRATEGY_MODULES: Dict[str, str] = {
@@ -19,6 +23,7 @@ STRATEGY_MODULES: Dict[str, str] = {
 
 def load_watch_list(signal: Optional[str] = None) -> List[Dict[str, Any]]:
     """从 stock_watch 集合拉取待监控标的"""
+    common = _get_common()
     collection = common.get_mongo_collection(common.MONGODB_WATCH_COLLECTION_NAME)
     query = {'signal': signal} if signal else {}
     docs = list(collection.find(query))
