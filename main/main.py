@@ -5,6 +5,7 @@ import importlib
 import importlib.util
 import logging
 import os
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -84,6 +85,41 @@ def load_watch_list(signal: Optional[str] = None) -> List[Dict[str, Any]]:
     return items
 
 
+def _ensure_main_modules_in_sys_modules():
+    """确保 main 和 main.common 在 sys.modules 中，供策略模块导入"""
+    # 获取当前模块（可能是 main_main 或其他名称）
+    current_module = None
+    for name in ['main_main', '__main__']:
+        if name in sys.modules:
+            current_module = sys.modules[name]
+            break
+    
+    # 如果找不到，尝试通过 __file__ 匹配
+    if current_module is None:
+        current_file = Path(__file__).resolve()
+        for name, mod in sys.modules.items():
+            if hasattr(mod, '__file__') and mod.__file__:
+                try:
+                    if Path(mod.__file__).resolve() == current_file:
+                        current_module = mod
+                        break
+                except (OSError, ValueError):
+                    pass
+    
+    if current_module:
+        # 将当前模块注册为 'main'
+        if 'main' not in sys.modules:
+            sys.modules['main'] = current_module
+        
+        # 确保 common 模块在 sys.modules 中，并添加到 main 模块的属性中
+        if 'main.common' not in sys.modules:
+            common = _get_common()
+            sys.modules['main.common'] = common
+            # 将 common 添加到 main 模块的属性中，这样 from main import common 才能工作
+            if not hasattr(sys.modules['main'], 'common'):
+                setattr(sys.modules['main'], 'common', common)
+
+
 def run_strategy(signal: str, items: List[Dict[str, Any]], data: Dict[str, Any]) -> Dict[str, Any]:
     """根据信号名称动态调度策略"""
     module_path = STRATEGY_MODULES.get(signal)
@@ -98,6 +134,9 @@ def run_strategy(signal: str, items: List[Dict[str, Any]], data: Dict[str, Any])
         # 如果包导入失败，尝试直接加载文件（适用于 spec_from_file_location 场景）
         logger.debug(f"包导入失败，尝试直接加载文件: {module_path}")
         try:
+            # 在加载策略模块之前，确保 main 和 main.common 在 sys.modules 中
+            _ensure_main_modules_in_sys_modules()
+            
             # 将模块路径转换为文件路径
             # main.strategies.rsi -> main/strategies/rsi.py
             parts = module_path.split('.')
