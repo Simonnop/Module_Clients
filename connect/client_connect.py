@@ -7,6 +7,7 @@ import logging
 import json
 import os
 import sys
+from datetime import datetime
 import websocket  # 使用 websocket-client 库
 
 # 确保项目根路径在 sys.path 中，便于绝对导入
@@ -53,7 +54,7 @@ def load_config():
         logger.error(f"加载配置时发生错误: {e}")
         return None
 
-# 加载配置并获取心跳间隔
+# 加载配置并获取 ping 间隔（用于 WebSocket ping/pong 和重连延迟）
 config_module = load_config()
 if not config_module:
     raise ValueError("无法加载配置文件")
@@ -108,7 +109,6 @@ class WebSocketClient:
         logger.info(f"连接到 WebSocket URL: {self.url}")
         self.ws = None
         self.is_connected = False
-        self.heartbeat_thread = None
         self.should_reconnect = True  # 是否应该重连
         self.reconnecting = False  # 是否正在重连中
     
@@ -124,9 +124,6 @@ class WebSocketClient:
         if message == "receive result":
             logger.info("收到处理结果确认")
             return
-        elif message == "heartbeat confirm":
-            logger.debug("收到心跳确认")
-            return
         
         # 解析 JSON 消息
         try:
@@ -141,12 +138,28 @@ class WebSocketClient:
                     logger.warning(f"无法解析 message 字段中的 JSON: {message_data}")
                     return
             
+            # 如果没有 message 字段，直接使用 parsed_message
+            if message_data is None:
+                message_data = parsed_message
+            
             # 检查消息类型
             if not isinstance(message_data, dict):
                 logger.warning(f"消息格式无效，期望字典类型: {type(message_data)}")
                 return
             
             message_type = message_data.get('type')
+            
+            # 处理 ping 消息
+            if message_type == 'ping':
+                logger.debug("收到 ping 消息，回复 pong")
+                try:
+                    self.ws.send(json.dumps({
+                        "type": "pong",
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                except Exception as e:
+                    logger.error(f"发送 pong 回复失败: {e}")
+                return
             
             # 处理 shutdown 命令
             if message_type == 'shutdown':
@@ -252,29 +265,6 @@ class WebSocketClient:
         """
         logger.info("WebSocket连接已建立")
         self.is_connected = True
-        # 启动心跳线程
-        self.heartbeat_thread = threading.Thread(target=self.send_heartbeat)
-        self.heartbeat_thread.daemon = True
-        self.heartbeat_thread.start()
-    
-    def send_heartbeat(self):
-        """
-        发送心跳
-        """
-        while self.is_connected:
-            try:
-                time.sleep(HEARTBEAT_INTERVAL)  # 等待心跳间隔
-                if self.ws and self.is_connected:
-                    self.ws.send("heartbeat")
-                    logger.debug("发送心跳")
-            except Exception as e:
-                logger.error(f"发送心跳失败: {e}")
-                # 心跳发送失败，标记连接断开，触发重连
-                self.is_connected = False
-                if self.should_reconnect and not self.reconnecting:
-                    logger.info(f"心跳发送失败，将在 {HEARTBEAT_INTERVAL} 秒后尝试重新连接...")
-                    threading.Thread(target=self._reconnect_after_delay, daemon=True).start()
-                break
     
     def _reconnect_after_delay(self):
         """
@@ -335,7 +325,11 @@ class WebSocketClient:
             
             # 运行WebSocket连接（阻塞）
             # 如果连接失败或断开，run_forever 会返回，on_close 回调会处理重连
-            self.ws.run_forever()
+            # 使用 WebSocket 自带的 ping/pong 机制
+            self.ws.run_forever(
+                ping_interval=HEARTBEAT_INTERVAL,  # ping 间隔（秒）
+                ping_timeout=max(1, HEARTBEAT_INTERVAL // 2)  # ping 超时时间（秒），必须小于 ping_interval
+            )
                 
         except Exception as e:
             logger.error(f"连接过程中发生异常: {e}")
