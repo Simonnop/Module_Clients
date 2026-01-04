@@ -151,7 +151,18 @@ def _build_stock_filter(stock_code: str) -> Dict[str, Any]:
 
 def _extract_price_from_doc(doc: Dict[str, Any]) -> Optional[float]:
     """从文档中提取价格字段"""
-    candidates = ('close', 'price', 'p', 'last', 'c', 'current', 'value')
+    candidates = ('current', 'close', 'price', 'p', 'last', 'c', 'value')
+    for key in candidates:
+        if key in doc:
+            try:
+                return float(doc[key])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+def _extract_volume_from_doc(doc: Dict[str, Any]) -> Optional[float]:
+    """从文档中提取成交量字段"""
+    candidates = ('volume', 'vol', 'VOL', 'Volume')
     for key in candidates:
         if key in doc:
             try:
@@ -185,6 +196,30 @@ def fetch_close_history(stock_code: str, limit: int) -> List[float]:
     return prices
 
 
+def fetch_close_volume_history(stock_code: str, limit: int) -> List[float]:
+    """从 close 集合获取历史成交量"""
+    collection = get_mongo_collection(MONGODB_CLOSE_COLLECTION_NAME)
+    filter_query = _build_stock_filter(stock_code)
+    cursor = collection.find(filter_query).sort([
+        ('date', DESCENDING),
+        ('_id', DESCENDING)
+    ]).limit(limit)
+    docs = list(cursor)
+
+    if not docs:
+        logger.warning(f"close 集合未找到 {stock_code} 的成交量记录")
+        return []
+
+    docs.reverse()
+    volumes: List[float] = []
+    for doc in docs:
+        volume = _extract_volume_from_doc(doc)
+        if volume is not None:
+            volumes.append(volume)
+
+    return volumes
+
+
 def fetch_current_price(stock_code: str) -> Optional[float]:
     """获取 current 集合中最新的实时价格"""
     collection = get_mongo_collection(MONGODB_CURRENT_COLLECTION_NAME)
@@ -194,6 +229,20 @@ def fetch_current_price(stock_code: str) -> Optional[float]:
         logger.warning(f"current 集合未找到 {stock_code} 的实时数据")
         return None
     return _extract_price_from_doc(doc)
+
+
+def fetch_current_volume(stock_code: str) -> Optional[float]:
+    """获取 current 集合中最新的实时成交量"""
+    collection = get_mongo_collection(MONGODB_CURRENT_COLLECTION_NAME)
+    filter_query = _build_stock_filter(stock_code)
+    doc = collection.find_one(filter_query, sort=[('_id', DESCENDING)])
+    if not doc:
+        logger.warning(f"current 集合未找到 {stock_code} 的实时数据")
+        return None
+    volume = _extract_volume_from_doc(doc)
+    if volume is None:
+        logger.warning(f"current 集合的 {stock_code} 数据不包含 volume 字段")
+    return volume
 
 
 def send_email_notification(subject: str, body: str, recipients: List[str]) -> bool:

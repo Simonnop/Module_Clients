@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 # RSI 配置
 RSI_PERIOD = int(os.getenv('RSI_PERIOD', '14'))
 RSI_HISTORY_DAYS = int(os.getenv('RSI_HISTORY_DAYS', str(max(RSI_PERIOD * 2, RSI_PERIOD + 1))))
+RSI_HIGH_DEFAULT = float(os.getenv('RSI_HIGH_DEFAULT', '70'))
+RSI_LOW_DEFAULT = float(os.getenv('RSI_LOW_DEFAULT', '30'))
 RSI_STATE_FILE = common.base_dir / 'logs' / 'rsi_state.json'
 
 
@@ -35,6 +37,17 @@ def load_rsi_state() -> Dict[str, Any]:
     state.setdefault('history', {})
     state.setdefault('notifications', [])
     return state
+
+
+def _parse_rsi_threshold(raw_value: Any, default: float) -> float:
+    """解析 RSI 阈值，解析失败时返回默认值"""
+    if raw_value is None:
+        return default
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(f"RSI 阈值配置无效，将使用默认值 {default}")
+        return default
 
 
 def save_rsi_state(state: Dict[str, Any]) -> None:
@@ -184,16 +197,8 @@ def run_rsi_monitor(data: Dict[str, Any], items: List[Dict[str, Any]]) -> Dict[s
             })
             continue
 
-        rsi_high = entry.get('rsi_high')
-        rsi_low = entry.get('rsi_low')
-        try:
-            rsi_high = float(rsi_high) if rsi_high is not None else None
-        except (TypeError, ValueError):
-            rsi_high = None
-        try:
-            rsi_low = float(rsi_low) if rsi_low is not None else None
-        except (TypeError, ValueError):
-            rsi_low = None
+        rsi_high = _parse_rsi_threshold(entry.get('rsi_high'), RSI_HIGH_DEFAULT)
+        rsi_low = _parse_rsi_threshold(entry.get('rsi_low'), RSI_LOW_DEFAULT)
 
         alert_type = None
         send_mail = False
