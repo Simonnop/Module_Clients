@@ -137,6 +137,59 @@ def should_capture_close_snapshot(current_time: datetime) -> bool:
     return current_time.hour >= 15
 
 
+def map_stock_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将原始股票数据映射到目标数据结构
+    """
+    timestamp = data.get('timestamp')
+    date_str = None
+    dt = None
+    if timestamp:
+        try:
+            # timestamp is in milliseconds
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            date_str = dt.strftime('%Y-%m-%d')
+        except Exception:
+            pass
+
+    # 优先使用 stock_code (如果存在)，否则使用 symbol
+    code = data.get('stock_code') or data.get('symbol')
+
+    name = data.get('name')
+    if not name and code:
+        try:
+            # 尝试通过 suggest_stock 获取名称
+            # main.py 中已全局配置 token，直接调用即可
+            search_result = ball.suggest_stock(code)
+            if search_result and 'data' in search_result and len(search_result['data']) > 0:
+                name = search_result['data'][0].get('query')
+        except Exception:
+            pass
+
+    def _to_float(val):
+        try:
+            return float(val) if val is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    # 统一转换为秒级时间戳 (10位)
+    ts_seconds = dt.timestamp() if dt else None
+
+    return {
+        "code": str(code) if code else None,
+        "name": str(name) if name else None,
+        "date": date_str,
+        "timestamp": ts_seconds,
+        "open": _to_float(data.get('open')),
+        "high": _to_float(data.get('high')),
+        "low": _to_float(data.get('low')),
+        "close": _to_float(data.get('current')),
+        "volume": _to_float(data.get('volume')),
+        "change_percent": _to_float(data.get('percent')),
+        "turnover_rate": _to_float(data.get('turnover_rate'))
+    }
+
+
 def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> Tuple[int, int]:
     """
     使用 upsert 方式将实时数据写入实时集合
@@ -148,35 +201,24 @@ def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> T
     success_count = 0
     fail_count = 0
 
-    for stock_data in stock_data_list:
-        stock_code = stock_data.get('stock_code')
-        symbol = stock_data.get('symbol')
-        code = stock_data.get('code')
-
-        # 更新时匹配的字段：优先使用 stock_code，其次尝试 symbol/code
-        if stock_code:
-            filter_query = {'stock_code': stock_code}
-        elif symbol:
-            filter_query = {'symbol': symbol}
-        elif code:
-            filter_query = {'code': code}
-        else:
-            filter_query = None
-
-        doc = stock_data.copy()
+    for raw_data in stock_data_list:
+        # 映射数据
+        doc = map_stock_data(raw_data)
+        # 添加更新时间
         doc['update_time'] = timestamp
         
+        code = doc.get('code')
 
         try:
-            if filter_query:
-                collection.replace_one(filter_query, doc, upsert=True)
+            if code:
+                collection.replace_one({'code': code}, doc, upsert=True)
             else:
                 # 没有可用的唯一键，直接插入新文档
                 collection.insert_one(doc)
             success_count += 1
         except Exception as exc:
             fail_count += 1
-            logger.error(f"保存实时数据到 {MONGODB_REALTIME_COLLECTION_NAME} 失败 ({stock_code}): {exc}")
+            logger.error(f"保存实时数据到 {MONGODB_REALTIME_COLLECTION_NAME} 失败 ({code}): {exc}")
 
     logger.info(
         f"实时集合 {MONGODB_REALTIME_COLLECTION_NAME} 更新完成: 成功写入 {success_count} 条，失败 {fail_count} 条"
@@ -187,33 +229,87 @@ def persist_realtime_data(stock_data_list: List[Dict], timestamp: datetime) -> T
 def persist_close_snapshot(stock_data_list: List[Dict], timestamp: datetime) -> Tuple[int, int]:
     """
     将收盘快照写入 close 表
+    
+    如果量和价都与前一条数据（最近的一个交易日）一模一样，判断为休市，不进行插入
     """
     if not stock_data_list:
         return (0, 0)
 
     collection = get_mongo_collection(MONGODB_CLOSE_COLLECTION_NAME)
     docs = []
+    
+    # 获取目标日期（当天凌晨0点）
+    target_date = datetime.combine(timestamp.date(), datetime.min.time())
+    # 目标日期字符串，用于新格式查询
+    target_date_str = timestamp.strftime('%Y-%m-%d')
+    
+    market_closed_count = 0
 
-    for stock_data in stock_data_list:
-        doc = stock_data.copy()
-        doc['date'] = str(timestamp.date())
-        doc['date'] = datetime.strptime(doc['date'], '%Y-%m-%d')
-        doc['close'] = doc['current']
+    for raw_data in stock_data_list:
+        # 映射数据
+        doc = map_stock_data(raw_data)
+        
+        code = doc.get('code')
+        current_price = doc.get('close')
+        current_volume = doc.get('volume')
+        
+        # 检查是否为休市（量价与前一个交易日记录完全一致）
+        if code:
+            # 查找该股票最近的一条收盘记录（日期小于当前目标日期）
+            # 兼容新旧格式：先尝试用 string date 查询，如果没找到且可能是旧数据，再尝试 datetime date
+            last_record = collection.find_one(
+                {'code': code, 'date': {'$lt': target_date_str}},
+                sort=[('date', -1)]
+            )
+            
+            if not last_record:
+                # 尝试旧格式查询 (使用 stock_code 和 datetime date)
+                last_record = collection.find_one(
+                    {'stock_code': raw_data.get('stock_code'), 'date': {'$lt': target_date}},
+                    sort=[('date', -1)]
+                )
+            
+            if last_record:
+                last_price = last_record.get('close')
+                last_volume = last_record.get('volume')
+                
+                # 如果量和价都与前一条数据一模一样，判定为休市
+                if current_price == last_price and current_volume == last_volume:
+                    market_closed_count += 1
+                    logger.info(f"股票 {code} 量价与上一交易日一致 ({current_price}, {current_volume})，判定为休市，跳过插入")
+                    continue
+
+        # 确保 date 字段存在且正确。
+        # 如果 map_stock_data 返回的 date 是 None (无 timestamp)，则使用 target_date_str
+        if not doc.get('date'):
+            doc['date'] = target_date_str
+            
         docs.append(doc)
+
+    if not docs:
+        logger.info(f"所有 {len(stock_data_list)} 条股票数据均判定为休市，无需更新 {MONGODB_CLOSE_COLLECTION_NAME}")
+        return 0, 0
 
     try:
         # 写入前删除同一天已有的快照，避免重复
-        target_date = docs[0]['date']
-        existing_count = collection.count_documents({'date': target_date})
+        # 兼容新旧格式删除：删除 date 为 target_date (datetime) 或 target_date_str (string) 的记录
+        delete_query = {
+            '$or': [
+                {'date': target_date},
+                {'date': target_date_str}
+            ]
+        }
+        existing_count = collection.count_documents(delete_query)
+        
         if existing_count > 0:
-            delete_result = collection.delete_many({'date': target_date})
+            delete_result = collection.delete_many(delete_query)
             logger.info(
                 f"检测到 {target_date.date()} 已有 {existing_count} 条收盘数据，已删除 {delete_result.deleted_count} 条旧数据"
             )
 
         result = collection.insert_many(docs)
         success = len(result.inserted_ids)
-        logger.info(f"收盘集合 {MONGODB_CLOSE_COLLECTION_NAME} 插入 {success} 条快照数据")
+        logger.info(f"收盘集合 {MONGODB_CLOSE_COLLECTION_NAME} 插入 {success} 条快照数据，跳过休市 {market_closed_count} 条")
         return success, 0
     except Exception as exc:
         logger.error(f"保存收盘数据到 {MONGODB_CLOSE_COLLECTION_NAME} 失败: {exc}")
