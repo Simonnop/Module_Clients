@@ -180,6 +180,7 @@ def map_stock_data(data: Dict[str, Any]) -> Dict[str, Any]:
         "name": str(name) if name else None,
         "date": date_str,
         "timestamp": ts_seconds,
+        "current": _to_float(data.get('current')),
         "open": _to_float(data.get('open')),
         "high": _to_float(data.get('high')),
         "low": _to_float(data.get('low')),
