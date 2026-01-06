@@ -38,7 +38,7 @@ check_python() {
 
 # 检查依赖
 check_dependencies() {
-    if ! python3 -c "import websocket" 2>/dev/null; then
+    if ! python3 -c "import websocket" 2>/dev/null || ! python3 -c "import pymongo" 2>/dev/null; then
         print_warning "检测到缺少依赖包"
         return 1
     fi

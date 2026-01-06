@@ -1,5 +1,5 @@
 import asyncio
-from bilibili_api import user
+from bilibili_api import user, Credential
 import datetime
 import subprocess
 import os
@@ -37,8 +37,24 @@ def load_config():
         return None
 
 async def get_dynamics(user_info):
+    # 加载凭证以避免 API 限制
+    credential = None
+    if os.path.exists('config.json'):
+        try:
+            with open('config.json', 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                creds = config_data.get('credentials', {})
+                if creds:
+                    credential = Credential(
+                        sessdata=creds.get('sessdata'),
+                        bili_jct=creds.get('bili_jct'),
+                        buvid3=creds.get('buvid3')
+                    )
+        except Exception as e:
+            print(f"Warning: Failed to load credentials: {e}")
+
     # 实例化
-    u = user.User(user_info['uid'])
+    u = user.User(user_info['uid'], credential=credential)
 
     # # 用于记录下一次起点
     offset = ""
@@ -46,9 +62,14 @@ async def get_dynamics(user_info):
     # 用于存储所有动态
     dynamics = []
 
-    page = await u.get_dynamics_new(offset)
-
-    dynamics.extend(page["items"])
+    try:
+        page = await u.get_dynamics_new(offset)
+        if page and "items" in page:
+            dynamics.extend(page["items"])
+    except Exception as e:
+        print(f"Error getting dynamics for user {user_info.get('uid')}: {e}")
+        if "Expecting value" in str(e):
+            print("Tip: Bilibili API 返回非 JSON 响应，请检查账号 Cookie 是否有效。")
 
     return dynamics
 
