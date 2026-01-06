@@ -4,6 +4,7 @@
 import numpy as np
 import logging
 import json
+from deploy import do_crawl
 
 # 配置日志
 logging.basicConfig(
@@ -31,13 +32,13 @@ def run(data, args=None):
         args = {}
     
     # 执行业务逻辑
-    reply = args.get('print', 'args error')
+    result = do_crawl()
     
-    logger.info(f"执行结果: {reply}")
+    logger.info(f"模块调用请求处理完成: {result}")
     logger.info("=" * 60)
     
     return {
         'status': 'success',
-        'reply': reply,
+        'reply': result,
     }
 

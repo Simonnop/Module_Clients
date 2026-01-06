@@ -32,8 +32,8 @@ SERVER_PORT = int(SERVER_PORT)
 CONFIG = {
 
     # 模块信息
-    "name": "测试模块",
-    "description": "这是一个用于测试的模块",
+    "name": "bilibili动态爬取模块",
+    "description": "这是一个用于爬取bilibili动态的模块",
     
     # 输入数据需求
     "input_data": [

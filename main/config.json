@@ -1,0 +1,16 @@
+{
+  "credentials": {
+    "sessdata": "804a5acf%2C1782967359%2C0bb2e%2A12CjD_CVb2HcmLU3KFAKNI3FvBjSYn4u2WYrP2a9VoyiV5gWW8co0nlDao1ybmWDUiAjsSVnM2ZVhZVlVvVW9qRTN5SnhiQlZVd1hNT3gybGdYQ3lKZzVfRVZCaVhYWHp3UFcwa1lvb1JKMFAxVGxRV3EzSDdTOHlsOGUzeVNHYnZ6X1B6UC1obUx3IIEC",
+    "bili_jct": "6fe1c964e58d03e654b19f7c2f6396cc",
+    "buvid3": "8B2EE3B6-0FFA-11D4-558B-6F7F3754678B31171infoc"
+  },
+  "concurrency": 3,
+  "proxy": "",
+  "output_formats": ["txt"],
+  "use_asr": false,
+  "asr_model": "small",
+  "asr_lang": "zh",
+  "save_audio": false,
+  "request_interval": 1.5,
+  "timeout": 30
+}
