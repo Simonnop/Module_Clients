@@ -1,2 +1,2 @@
-url=${1:-"https://www.bilibili.com/video/BV1UWisB6E1Y"}
+url=${1:-"https://www.bilibili.com/video/BV13sibBxEY5"}
 python enhanced_bilisub.py -i "$url" --config config.json

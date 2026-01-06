@@ -4,6 +4,8 @@
 import numpy as np
 import logging
 import json
+import asyncio
+import threading
 from deploy import do_crawl
 
 # 配置日志
@@ -31,14 +33,18 @@ def run(data, args=None):
     if args is None:
         args = {}
     
-    # 执行业务逻辑
-    result = do_crawl()
-    
-    logger.info(f"模块调用请求处理完成: {result}")
-    logger.info("=" * 60)
+    # 启动后台任务执行业务逻辑
+    def background_task():
+        try:
+            logger.info("开始执行后台爬虫任务")
+            asyncio.run(do_crawl())
+            logger.info("后台爬虫任务完成")
+        except Exception as e:
+            logger.error(f"后台任务执行出错: {e}", exc_info=True)
+
+    threading.Thread(target=background_task).start()
     
     return {
-        'status': 'success',
-        'reply': result,
+        'status': 'background_task_started',
     }
 

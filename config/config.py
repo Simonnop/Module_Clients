@@ -19,6 +19,8 @@ else:
 SERVER_IP = os.getenv('SERVER_IP')
 SERVER_PORT = os.getenv('SERVER_PORT')
 
+MONGODB_HOST = os.getenv('MONGODB_HOST')
+
 # WebSocket配置
 HEARTBEAT_INTERVAL = int(os.getenv('HEARTBEAT_INTERVAL', '10'))  # 心跳间隔（秒），默认10秒
 
