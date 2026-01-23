@@ -6,9 +6,19 @@ websocket-client>=1.6.0
 # HTTP 请求库（用于模块注册）
 requests>=2.31.0
 
+# 异步 HTTP 请求库
+aiohttp>=3.9.0
+aiofiles>=23.2.0
+
 # 数值计算库
 numpy>=1.24.0
 
 # 环境变量管理
 python-dotenv>=1.0.0
+
+# MongoDB 客户端
+pymongo>=4.6.0
+
+# 百度云盘客户端
+bypy>=1.7.0
 
