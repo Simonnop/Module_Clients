@@ -12,3 +12,9 @@ numpy>=1.24.0
 # 环境变量管理
 python-dotenv>=1.0.0
 
+# MongoDB 客户端
+pymongo>=4.0.0
+
+# 邮件 HTML 内联化（可选，用于邮件兼容性）
+premailer>=3.10.0
+

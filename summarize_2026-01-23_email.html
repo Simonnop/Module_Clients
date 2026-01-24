@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026-01-23 A股市场分析报告</title>
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --secondary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f3f4f6;
+            --text-main: #111827;
+            --text-sub: #4b5563;
+            --border: #e5e7eb;
+        }
+        body {
+            font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.5;
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        @media (min-width: 768px) {
+            .container {
+                margin: 20px auto;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+            }
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            color: #ffffff;
+            padding: 30px 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .date-tag {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 6px;
+            display: block;
+        }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            background-color: var(--success);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+        .content {
+            padding: 20px;
+        }
+        .summary-mini {
+            background-color: #f8fafc;
+            border-left: 4px solid var(--secondary);
+            padding: 12px 15px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .section-header {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+            margin: 24px 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .macro-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+        .macro-item {
+            background: #fff;
+            border: 1px solid var(--border);
+            padding: 12px;
+            border-radius: 6px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .macro-label {
+            font-size: 11px;
+            color: var(--primary);
+            font-weight: 700;
+            white-space: nowrap;
+            background: #eff6ff;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .macro-value {
+            font-size: 13px;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+        .stock-vertical-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .stock-card {
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--secondary);
+            padding: 15px;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .stock-card.card-1 { border-left-color: #3b82f6; }
+        .stock-card.card-2 { border-left-color: #f59e0b; }
+        .stock-card.card-3 { border-left-color: #10b981; }
+        .stock-card.card-4 { border-left-color: #ef4444; }
+        .stock-card.card-5 { border-left-color: #8b5cf6; }
+        .stock-card.card-6 { border-left-color: #ec4899; }
+        .stock-card.card-7 { border-left-color: #06b6d4; }
+        .stock-card.card-8 { border-left-color: #f97316; }
+        .stock-card.card-9 { border-left-color: #84cc16; }
+        .stock-card.card-10 { border-left-color: #6366f1; }
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .stock-name-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stock-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .stock-code {
+            font-size: 12px;
+            color: var(--text-sub);
+            font-family: monospace;
+        }
+        .stock-tag {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-sub);
+            background: #f3f4f6;
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+        .stock-desc {
+            font-size: 13px;
+            color: #374151;
+            margin: 8px 0;
+            line-height: 1.5;
+            background: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .stock-footer {
+            font-size: 11px;
+            color: var(--text-sub);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #f3f4f6;
+            padding-top: 8px;
+        }
+        .strategy-box {
+            background: #fffbeb;
+            border: 1px solid #fef3c7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 30px;
+        }
+        .strategy-box h4 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: #92400e;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .strategy-box ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 13px;
+            color: #78350f;
+        }
+        .strategy-box li { margin-bottom: 6px; }
+        .footer {
+            padding: 30px 20px;
+            background-color: #111827;
+            color: #9ca3af;
+            text-align: center;
+            font-size: 11px;
+        }
+        .json-mini {
+            margin-top: 25px;
+            background: #1f2937;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #60a5fa;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body style='font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; line-height:1.5; color:var(--text-main); margin:0; padding:0; background-color:var(--bg)' bgcolor="var(--bg)">
+    <div class="container" style="max-width:600px; margin:0 auto; background-color:#fff" bgcolor="#ffffff">
+    <div class="header" style="background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color:#fff; padding:30px 20px">
+        <h1 style="margin:0; font-size:22px; font-weight:700">市场信息AI分析报告</h1>
+        <span class="date-tag" style="font-size:13px; opacity:0.8; margin-top:6px; display:block">源自 2026-01-23 信息</span>
+        <div class="status-pill" style="display:inline-flex; align-items:center; background-color:var(--success); padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600; margin-top:15px" bgcolor="var(--success)">固态电池设备 · 商业航天 · 半导体修复 · 化工牛市</div>
+    </div>
+
+    <div class="content" style="padding:20px">
+        <div class="summary-mini" style="background-color:#f8fafc; border-left:4px solid var(--secondary); padding:12px 15px; margin-bottom:24px; font-size:14px; line-height:1.6" bgcolor="#f8fafc">
+            <strong>核心信息：</strong>2026-01-23（昨日）A股呈现结构性修复：固态电池设备板块爆发（海目星、先导智能、联赢激光创历史新高），商业航天因“太空光伏需固态电池”逻辑共振修复；半导体结束连跌迎来强势修复（封测/长电/通富微电走强）；化工被明确定义为“长周期牛市”，机器人受马斯克机器人交付推迟+三花智控减值影响走弱；全市场情绪由国盛科技地天板延续带动，短线压制缓解。
+        </div>
+
+        <div style="font-size: 11px; color: #b45309; background-color: #fffbeb; padding: 10px; font-weight: 600; line-height: 1.5; text-align: center; ">⚠️ 内容源于PDF识别、语音识别以及大语言模型总结，内容极容易出现错误，强烈建议操作前进行人工研判</div>
+
+        <!-- 一、宏观市场分析 -->
+        <div class="section-header" style="font-size:16px; font-weight:700; color:var(--primary); margin:24px 0 12px 0; display:flex; align-items:center; gap:8px">
+            <span style="font-size: 18px; margin-right: 8px;">📊</span>
+            宏观维度解析
+        </div>
+        <div class="macro-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px">
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">指数趋势</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">科创50与半导体指数显著修复（涨2.3%+），固态电池设备相关个股集体新高，但机器人、消费电子等板块明显承压；市场呈现“强主线+弱辅线”分化格局，未见普涨，技术面处于关键突破确认期。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">资金流向</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">主力资金回流硬科技主线：固态电池设备（设备端）、商业航天（有订单逻辑的龙头）、半导体封测环节获明显净流入；机器人、部分跟风商业航天题材遭遇减仓；北交所个股（如“北郊”疑为“北交所”误读）波动加大，显示资金对小市值题材仍存分歧。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">政策环境</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">无新增实质性产业政策发布，但“太空光伏需固态电池”的底层技术逻辑被市场自发强化，形成跨板块政策预期传导；监管层对蹭热点行为持续警示（隐含于“蹭热点修复不易”表述中），强调业绩兑现导向。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">风险警示</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">① 固态电池设备短期涨幅较大（多只新高），存在技术性回调压力；② 商业航天板块内部分化加剧，“有订单逻辑”与“纯概念蹭热点”标的估值差迅速拉大，后者面临二次出清风险；③ 机器人板块受马斯克交付推迟及三花智控减值双重打击，短期难言反转；④ 北交所流动性与波动性风险未消除。</span>
+            </div>
+        </div>
+
+        <!-- 三、个股分析 (核心标的) -->
+        <div class="section-header" style="font-size:16px; font-weight:700; color:var(--primary); margin:24px 0 12px 0; display:flex; align-items:center; gap:8px">
+            <span style="font-size: 18px; margin-right: 8px;">⚡</span>
+            核心关注标的
+        </div>
+        <div class="stock-vertical-list" style="display:flex; flex-direction:column; gap:12px">
+            <!-- 固态电池设备板块 -->
+            <div class="stock-card card-1" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#3b82f6">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">海目星</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SH688559</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">固态电池设备</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“海木星新高”（语音识别，“木”为“目”同音误读）。经核查，海目星（SH688559）为激光及自动化设备龙头，深度参与固态电池正负极激光加工设备供应，2026-01-23盘中创历史新高。擒龙先生明确将其列为“固态设备核心布局”，属未来持续跟踪标的。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (核心设备商·历史新高验证逻辑)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+            <div class="stock-card card-1" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#3b82f6">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">先导智能</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SZ300450</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">固态电池设备</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“先导智能破前高”。先导智能（SZ300450）为全球锂电设备龙头，已公告布局固态电池整线设备研发。2026-01-23收盘价突破前期高点，擒龙先生将其与海目星并列为“核心布局”，具备明确设备端业绩兑现预期。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (设备龙头·技术破位确认)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+            <div class="stock-card card-1" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#3b82f6">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">联赢激光</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SH688518</span>
+</div>
+                <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">固态电池设备</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“联赢激光大涨破历史新高”。联赢激光（SH688518）主营精密激光焊接，是固态电池极耳、封装等关键工序核心设备供应商。2026-01-23股价创上市新高，与海目星、先导智能共同构成设备端最强三角，逻辑闭环完整。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (激光焊接龙头·历史新高)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+
+            <!-- 商业航天（有订单逻辑） -->
+            <div class="stock-card card-2" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#f59e0b">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">真兰仪表</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SZ301303</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">商业航天·太空光伏</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“两个超杰跟真雷…真雷历史新高”。语音识别“真雷”高度疑似“真兰仪表”（SZ301303），其主营业务为智能燃气表，但2025年公告切入卫星通信终端及太空能源管理模块研发，与“太空光伏”逻辑直接挂钩。2026-01-23股价创历史新高，擒龙先生明确列为“有逻辑会产生业绩”的穿越标的。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (太空光伏配套·历史新高)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+            <div class="stock-card card-2" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#f59e0b">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">超捷股份</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SZ301005</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">商业航天·结构件</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“超截几乎就摸上历史新高的点了”。语音识别“超截”为“超捷股份”（SZ301005）同音。公司为商业航天火箭及卫星结构件核心供应商，已获多家航天院所订单。2026-01-23股价逼近历史高点，擒龙先生将其与真兰仪表并列，定义为“实实在在会拿到订单”的龙头。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (结构件龙头·订单兑现)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+
+            <!-- 半导体 -->
+            <div class="stock-card card-3" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#10b981">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">通富微电</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SZ002156</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">半导体·封测</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“同威福电走的太漂亮了 同为浮电都有走势”。语音识别“同威福电”“同为浮电”均指向通富微电（SZ002156）。“封测这些已经陆续开始修复”，且“很漂亮很漂亮”，明确表达对封测环节修复的认可。公司为国内封测龙头，先进封装（Chiplet）进展顺利，业绩验证逻辑清晰。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (封测龙头·修复确认)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+            <div class="stock-card card-3" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#10b981">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">长电科技</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SH600584</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">半导体·封测</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“长电也开始在走修复”。长电科技（SH600584）为全球第三、国内第一封测巨头，直接受益于AI算力芯片封装需求。擒龙先生将“长电”与“通富微电”并列提及，确认其修复趋势，属半导体板块核心配置标的。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (封测龙头·修复启动)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+
+            <!-- 化工（ETF推断） -->
+            <div class="stock-card card-4" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#ef4444">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">化工ETF</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SH516010</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">化工·ETF工具</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">推断逻辑：擒龙先生反复强调“化工…会走一段蛮长的一个牛市周期”，并称“里面哪些是核心…会在学习班里面讲”，表明其看好化工板块整体而非单一个股。当前A股主流化工ETF为化工ETF（SH516010），覆盖万华化学、恒力石化、荣盛石化等龙头，是捕捉化工牛市最高效工具。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (板块级牛市·ETF工具)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+
+            <!-- 机器人（谨慎） -->
+            <div class="stock-card card-5" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#8b5cf6">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">三花智控</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SZ002050</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">机器人·风险警示</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">原文依据：“三花的减值”“某队的砸盘”。三花智控（SZ002050）为热管理龙头，深度绑定特斯拉机器人。但2026-01-23受“减值”消息及“某队砸盘”影响走弱。擒龙先生虽称“可以持续等待”，但明确指出其走弱“非常正常”，且叠加马斯克交付推迟，短期逻辑受损，列为需谨慎观察标的。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看空 (短期逻辑受损·减值冲击)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+
+            <!-- ETF补充（半导体） -->
+            <div class="stock-card card-6" style="border:1px solid var(--border); border-left:4px solid var(--secondary); padding:15px; border-radius:6px; background:#fff; border-left-color:#ec4899">
+                <div class="stock-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div class="stock-name-box" style="display:flex; align-items:center; gap:8px">
+<span class="stock-name" style="font-size:16px; font-weight:700; color:var(--primary)">半导体ETF</span><span class="stock-code" style="font-size:12px; color:var(--text-sub); font-family:monospace">SH512480</span>
+</div>
+                    <span class="stock-tag" style="font-size:11px; font-weight:600; color:var(--text-sub); background:#f3f4f6; padding:1px 6px; border-radius:3px">半导体·ETF工具</span>
+                </div>
+                <div class="stock-desc" style="font-size:13px; color:#374151; margin:8px 0; line-height:1.5; background:#f9fafb; padding:10px; border-radius:4px">推断逻辑：原文明确“半导体…迎来修复”“科创半导体也涨了”，且强调“业绩在不断验证”“景气度被认可”。半导体ETF（SH512480）是跟踪费城半导体指数（SOX）的A股核心工具，成分股覆盖中芯国际、寒武纪、兆易创新等，完美契合“业绩+景气度”双主线。</div>
+                <div class="stock-footer" style="font-size:11px; color:var(--text-sub); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f3f4f6; padding-top:8px">
+<span>看多 (行业修复·ETF工具)</span><span>来源：擒龙先生（BV1V1zNBvEBk）</span>
+</div>
+            </div>
+        </div>
+
+        <!-- 四、建议与总结 -->
+        <div class="section-header" style="font-size:16px; font-weight:700; color:var(--primary); margin:24px 0 12px 0; display:flex; align-items:center; gap:8px">
+            <span style="font-size: 18px; margin-right: 8px;">💡</span>
+            实战交易策略总结
+        </div>
+        <div class="macro-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px">
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">总体策略</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">聚焦“业绩可验证+逻辑有纵深”的硬科技主线，执行“高位减仓→低位补仓”的动态再平衡策略，回避纯概念炒作与短期利空未消化标的。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">具体操作</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">✅ 主升方向：固态电池设备（海目星/先导智能/联赢激光）逢低关注；✅ 穿越方向：商业航天（真兰仪表/超捷股份）重点跟踪订单落地；✅ 修复方向：半导体封测（通富微电/长电科技）及半导体ETF（SH512480）；✅ 板块方向：化工ETF（SH516010）作为底仓配置。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">回避方向</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">❌ 纯蹭热点商业航天个股（无订单、无技术壁垒）；❌ 机器人板块（尤其三花智控）待马斯克机器人交付节奏明朗及减值影响消化后再评估；❌ 北交所缺乏业绩支撑的高波动标的。</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">交易建议</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">固态设备已处爆发初期，不宜追高，宜等待分歧低吸；半导体修复尚未完成，可分批建仓；化工为长周期布局，适合定投式介入；所有操作须严格设置止损（如-5%）。</span>
+            </div>
+        </div>
+
+        <!-- 五、数据来源 -->
+        <div class="section-header" style="font-size:16px; font-weight:700; color:var(--primary); margin:24px 0 12px 0; display:flex; align-items:center; gap:8px">
+            <span style="font-size: 18px; margin-right: 8px;">📚</span>
+            数据来源
+        </div>
+        <div class="macro-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px">
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">B站动态</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">擒龙先生（http://www.bilibili.com/video/BV1V1zNBvEBk）</span>
+            </div>
+            <div class="macro-item" style="background:#fff; border:1px solid var(--border); padding:12px; border-radius:6px; display:flex; align-items:flex-start; gap:12px">
+                <span class="macro-label" style="font-size:11px; color:var(--primary); font-weight:700; white-space:nowrap; background:#eff6ff; padding:2px 6px; border-radius:3px">网盘文件</span>
+                <span class="macro-value" style="font-size:13px; color:var(--text-main); line-height:1.4">未提供</span>
+            </div>
+        </div>
+
+        <!-- 六、JSON -->
+        
+    </div>
+
+    <div class="footer" style="padding:30px 20px; background-color:#111827; color:#9ca3af; text-align:center; font-size:11px" bgcolor="#111827" align="center">
+        <p>敬畏市场 远离杠杆 控制回撤 长期复利</p>
+        <p>AAA韭菜防割 · 敬上</p>
+        <p> 2026-01-24 22:04:35 </p>
+    </div>
+</div>
+</body>
+</html>
