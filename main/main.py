@@ -52,7 +52,8 @@ async def process_pdf_file(session, file_path, filename, year, month, day, now, 
                         "url": file_path,
                         "time": now.strftime("%H:%M:%S"),
                         "date": f"{year}-{month:02d}-{day:02d}",
-                        "content": answer
+                        "content": answer,
+                        "used": False,
                     }
                     logger.info(f"处理完成: {filename}")
                     return item
@@ -77,6 +78,29 @@ async def main_async():
         year = now.year
         month = now.month
         day = now.day - 1
+
+        # 处理跨月跨年的情况
+        if day <= 0:
+            # 如果前一天是上个月的最后一天
+            if month == 1:
+                # 跨年
+                year -= 1
+                month = 12
+                day = 31
+            else:
+                # 跨月
+                month -= 1
+                # 获取上个月的最后一天
+                if month in [1, 3, 5, 7, 8, 10, 12]:
+                    day = 31
+                elif month in [4, 6, 9, 11]:
+                    day = 30
+                else:  # 2月
+                    # 判断是否为闰年
+                    if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0):
+                        day = 29
+                    else:
+                        day = 28
         
         logger.info(f"开始处理日期: {year}-{month:02d}-{day:02d}")
         
