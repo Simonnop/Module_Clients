@@ -18,7 +18,6 @@ DATABASE_NAME = 'finance_data'
 COLLECTION_WATCH_USER = 'bili_watch_user'
 COLLECTION_INFO = 'bili_info'
 
-
 def load_config():
     """
     加载配置文件
@@ -92,7 +91,8 @@ async def split_av_and_draw(user_list, look_days):
                         'type': '视频',
                         'url': url,
                         'time': str(date.strftime('%H:%M:%S')),
-                        'date': str(date.strftime('%Y-%m-%d'))
+                        'date': str(date.strftime('%Y-%m-%d')),
+                        'used': False,
                     })
                 elif dy["type"] == 'DYNAMIC_TYPE_DRAW':
                     url = dy["modules"]["module_dynamic"]["major"]["opus"]["jump_url"]
@@ -109,7 +109,8 @@ async def split_av_and_draw(user_list, look_days):
                         'url': url,
                         'content': '【' + title + '】' + '\n' + text,
                         'time': str(date.strftime('%H:%M:%S')),
-                        'date': str(date.strftime('%Y-%m-%d'))
+                        'date': str(date.strftime('%Y-%m-%d')),
+                        'used': False
                     })
             except Exception as e:
                 print(e)
@@ -143,7 +144,8 @@ async def get_subtitle(av_list):
                 'url': av['url'],
                 'time': str(av['time']),
                 'date': str(av['date']),
-                'content': text_content
+                'content': text_content,
+                'used': False
             })
             print('done')
         else:
