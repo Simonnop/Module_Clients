@@ -1,17 +1,15 @@
-# 天气爬虫客户端模块
+# 股票实时交易数据获取客户端模块
 
 ## 简介
 
-这是一个天气数据爬虫客户端模块，通过 WebSocket 连接到服务器，接收执行请求后从 MSN 天气 API 获取天气数据并保存到 MongoDB 数据库。
+这是一个股票实时交易数据获取客户端模块，通过 WebSocket 连接到服务器，接收执行请求后从 Infoway API 批量获取股票实时交易数据并保存到 MongoDB 数据库。
 
 ## 功能特性
 
 - **WebSocket 客户端连接**：与服务器建立 WebSocket 连接，接收执行命令
-- **天气数据采集**：从 MSN 天气 API 获取指定城市的天气预报数据
-- **数据存储**：将天气数据保存到 MongoDB 数据库，支持自动去重
-- **批量处理**：支持批量处理多个城市，使用线程池并发处理提高效率
-- **城市坐标映射**：内置中国主要城市坐标映射，支持城市名称到经纬度转换
-- **整点数据过滤**：自动过滤非整点数据，只保存整点天气数据
+- **股票实时数据采集**：从 Infoway API 批量获取指定股票的实时交易数据
+- **数据存储**：将股票实时交易数据保存到 MongoDB 数据库
+- **批量处理**：支持批量处理多个股票代码，一次请求获取多个股票数据
 - **心跳机制**：保持 WebSocket 连接活跃
 - **直接运行模式**：支持不通过服务器直接运行，方便本地测试
 
@@ -64,11 +62,9 @@ cp config/.env.example config/.env
 - `SERVER_IP` - 服务器 IP 地址
 - `SERVER_PORT` - 服务器端口
 - `MONGODB_HOST` - MongoDB 连接字符串（完整连接字符串，如 `mongodb+srv://...` 或 `mongodb://...`）
-- `MONGODB_DB_NAME` - MongoDB 数据库名称
-- `MONGODB_COLLECTION_NAME` - MongoDB 集合名称
-- `WEATHER_API_KEY` - MSN 天气 API 密钥（可选，有默认值）
-- `WEATHER_APP_ID` - MSN 天气应用 ID（可选，有默认值）
-- `WEATHER_DAYS` - 获取未来天数（可选，默认 10 天）
+- `MONGODB_DB_NAME` - MongoDB 数据库名称（可选，默认 `forecast_platform`）
+- `MONGODB_REALTIME_COLLECTION_NAME` - 实时数据集合名称（可选，默认 `realtime`，可通过 `MONGODB_COLLECTION_NAME` 兼容老配置）
+- `MONGODB_CLOSE_COLLECTION_NAME` - 收盘快照集合名称（可选，默认 `close`）
 - `HEARTBEAT_INTERVAL` - 心跳间隔秒数（可选，默认 10 秒）
 
 ### 3. 启动模块
@@ -113,16 +109,8 @@ python connect/client_connect.py
 不通过服务器，直接运行主函数进行测试：
 
 ```bash
-# 使用默认城市列表（北京,上海,广州,深圳）和默认天数（10天）
-python run_main.py
-
-# 指定城市列表和天数
-python run_main.py "北京,上海,广州,深圳" 10
-
-# 使用环境变量
-export CITY_LIST="武汉,宜昌,孝感"
-export DAYS=7
-python run_main.py
+# 指定股票代码列表（支持批量获取）
+python run_main.py --codes TSLA.US AAPL.US USDCNY
 ```
 
 ### 4. 管理脚本命令
@@ -148,8 +136,8 @@ Module_Clients/
 │   ├── model_router.py      # 请求路由处理
 │   └── register.py          # 模块注册
 ├── main/                 # 业务执行模块
-│   ├── main.py              # 主业务逻辑（天气数据采集和存储）
-│   └── city_coordinates.py  # 城市坐标映射工具
+│   ├── main.py              # 主业务逻辑（股票实时交易数据采集和存储）
+│   └── license_manager.py  # License管理模块
 ├── config/               # 配置文件目录
 │   ├── config.py            # 配置文件
 │   ├── .env.example         # 环境变量配置示例
@@ -167,34 +155,92 @@ Module_Clients/
 
 ### 数据采集流程
 
-1. **接收请求**：通过 WebSocket 接收服务器发送的执行请求，包含城市列表和天数参数
-2. **坐标转换**：根据城市名称查询对应的经纬度坐标（使用内置城市坐标映射）
-3. **API 调用**：调用 MSN 天气 API 获取指定坐标的天气预报数据
-4. **数据过滤**：自动过滤非整点数据，只保留整点（小时）天气数据
-5. **数据存储**：将天气数据保存到 MongoDB，自动去重（基于城市和时间）
+1. **接收请求**：通过 WebSocket 接收服务器发送的执行请求，包含股票代码列表参数
+2. **API 调用**：调用 Infoway API 批量获取指定股票的实时交易数据
+3. **数据存储**：将股票实时交易数据保存到 MongoDB
+
+### API接口说明
+
+**接口地址**：`https://data.infoway.io/stock/batch_trade/{codes}`
+
+**请求方式**：GET
+
+**请求头**：
+- `apiKey` - Infoway API密钥（必需）
+
+**请求参数**：
+- `codes` - 股票代码列表，多个代码用逗号分隔（如：`TSLA.US,AAPL.US`）
+
+**返回格式**：
+```json
+{
+  "ret": 200,
+  "msg": "success",
+  "traceId": "...",
+  "data": [
+    {
+      "s": "TSLA.US",
+      "t": 1750177346523,
+      "p": "5188.211",
+      "v": "3.0",
+      "vw": "15564.6330",
+      "td": 0
+    }
+  ]
+}
+```
 
 ### 数据字段
 
-保存到 MongoDB 的天气数据包含以下字段：
-- `city` - 城市名称
-- `time` - 时间（ISO 格式）
-- `temp` - 温度
-- `utci` - 体感温度
-- `baro` - 气压
-- `dewPt` - 露点
-- `vis` - 能见度
-- `windSpd` - 风速
-- `windDir` - 风向
-- `cloudCover` - 云层厚度
-- `cap` - 天气类型（文字描述）
-- `created_at` - 数据创建时间
+保存到 MongoDB 的股票实时交易数据包含以下字段：
+- `s` - 标的名称（如：TSLA.US）
+- `t` - 交易时间（时间戳）
+- `p` - 价格
+- `v` - 成交量
+- `vw` - 成交额
+- `td` - 交易方向（0为默认值，1为Buy，2为SELL）
+- `stock_code` - 股票代码（自动添加）
+- `create_time` - 数据创建时间（自动添加）
 
 ### 性能优化
 
 - **连接复用**：MongoDB 连接和集合对象全局复用，避免重复创建连接
-- **批量查询**：使用批量查询检查数据是否已存在，减少数据库查询次数
-- **并发处理**：使用线程池并发处理多个城市，最多 5 个并发
-- **索引优化**：在 MongoDB 中创建 `(city, time)` 复合唯一索引，提高查询和去重效率
+- **批量获取**：支持一次请求获取多个股票数据，提高效率
+
+### RSI 监控模块（唯一执行入口）
+
+本模块改为只负责 RSI 监控：`run` 接口必须在 `args.items` 中传入要监控的列表才能执行，数据由 `close` 和 `current` 表提供历史与实时价格组合，触发 `rsi_high`/`rsi_low` 会通过 HTTP 邮件服务通知收件人，并把通知记录到 `signal` 表与 `logs/rsi_state.json`，确保每日每票只通知一次。
+
+示例参数结构：
+```json
+{
+  "args": {
+    "items": [
+      {
+        "code": "SH600900",
+        "name": "长江电力",
+        "rsi_high": 70,
+        "rsi_low": 30,
+        "emails": [
+          "741617293@qq.com",
+          "2804966357@qq.com"
+        ]
+      }
+    ]
+  }
+}
+```
+
+需要预先配置的环境变量：
+
+- `MONGODB_CURRENT_COLLECTION_NAME`（默认 `current`）：RSI 监控读取实时价格集合
+- `RSI_PERIOD`（默认 14）：计算 RSI 所需周期
+- `RSI_HISTORY_DAYS`（默认 `RSI_PERIOD` 的两倍）：每天加载的历史收盘价数量
+- `EMAIL_SEND_URL`（默认 `http://119.45.129.116:10101/send`）：调用 HTTP 接口发送邮件通知
+- `EMAIL_SEND_TIMEOUT`（默认 10）：HTTP 请求超时时间
+- `MONGODB_SIGNAL_COLLECTION_NAME`（默认 `signal`）：记录已通知票的集合
+
+日志文件 `logs/rsi_state.json` 用于记录当天已通知的股票和缓存的历史收盘价。
 
 ## 注意事项
 
@@ -202,7 +248,7 @@ Module_Clients/
 - 首次运行前必须先执行模块注册
 - 模块通过 WebSocket 连接服务器，需要网络畅通
 - 确保 MongoDB 连接字符串配置正确，支持 `mongodb://` 和 `mongodb+srv://` 格式
+- 确保 `INFOWAY_API_KEY` 环境变量已正确配置
 - 日志文件保存在 `logs/` 目录下
-- 城市坐标映射目前仅支持内置的城市列表，如需添加新城市，请编辑 `main/city_coordinates.py`
-- 数据去重基于 `(city, time)` 复合唯一索引，相同城市和时间的记录不会重复插入
-
+- 股票代码格式：如 `TSLA.US`、`AAPL.US`、`USDCNY` 等（支持国际股票代码和货币对）
+- API支持批量获取，多个股票代码用逗号分隔

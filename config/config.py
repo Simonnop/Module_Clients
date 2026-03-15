@@ -30,19 +30,16 @@ if not SERVER_PORT:
 SERVER_PORT = int(SERVER_PORT)
 
 CONFIG = {
-
     # 模块信息
-    "name": "测试模块",
-    "description": "这是一个用于测试的模块",
-    
+    "name": "股票信号监控模块",
+    "description": "监控多种股票信号，当信号超过阈值时发送邮件通知",
+
     # 输入数据需求
     "input_data": [
-        
     ],
     
     # 输出数据需求
     "output_data": [
-        
     ]
 }
 
